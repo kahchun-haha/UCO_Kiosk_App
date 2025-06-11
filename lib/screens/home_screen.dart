@@ -1,4 +1,4 @@
-// screens/home_screen.dart
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:uco_kiosk_app/screens/profile_screen.dart';
 import 'package:uco_kiosk_app/screens/qr_display_screen.dart';
@@ -12,38 +12,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final _authService = AuthService();
+  final AuthService _authService = AuthService();
   int _selectedIndex = 0;
-  int _userPoints = 0;
-  String _userEmail = '';
-  String _qrCode = ''; // Added missing variable
-  bool _isLoading = true; // Added missing variable
-
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
-  }
-
-  Future<void> _loadUserData() async {
-    final user = _authService.getCurrentUser();
-    if (user != null) {
-      final userData = await _authService.getUserData(user.uid);
-      if (userData != null && userData.exists) {
-        final data = userData.data() as Map<String, dynamic>?;
-        setState(() {
-          _userEmail = user.email ?? '';
-          _userPoints = data?['points'] ?? 0;
-          _qrCode = data?['qrCode'] ?? '';
-          _isLoading = false;
-        });
-      } else {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    }
-  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -58,7 +28,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,
-          children: [_buildHomeTab(), _buildScanTab(), _buildProfileTab()],
+          children: [_buildHomeTab(), _buildScanTab(), const ProfileScreen()],
         ),
       ),
       bottomNavigationBar: Container(
@@ -100,12 +70,41 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomeTab() {
-    return Padding(
+    final user = _authService.getCurrentUser();
+    if (user == null) {
+      return const Center(child: Text("User not found. Please sign in."));
+    }
+
+    return StreamBuilder<DocumentSnapshot>(
+      stream: _authService.getUserDataStream(user.uid),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(
+            child: CircularProgressIndicator(color: Color(0xFF88C999)),
+          );
+        }
+        if (snapshot.hasError) {
+          return const Center(child: Text("Something went wrong."));
+        }
+        if (!snapshot.hasData || !snapshot.data!.exists) {
+          return const Center(child: Text("User data could not be loaded."));
+        }
+
+        final data = snapshot.data!.data() as Map<String, dynamic>;
+        final userEmail = user.email ?? 'No Email';
+        final userPoints = data['points'] ?? 0;
+
+        return _buildHomeUI(userEmail: userEmail, userPoints: userPoints);
+      },
+    );
+  }
+
+  Widget _buildHomeUI({required String userEmail, required int userPoints}) {
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -117,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: TextStyle(fontSize: 16, color: Color(0xFF9CA3AF)),
                   ),
                   Text(
-                    _userEmail.split('@')[0],
+                    userEmail.split('@')[0],
                     style: const TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.w700,
@@ -145,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      '$_userPoints pts',
+                      '$userPoints pts', // Displays the live points
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -197,11 +196,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {
-                      setState(() {
-                        _selectedIndex = 1;
-                      });
-                    },
+                    onPressed:
+                        () =>
+                            _onItemTapped(1), // Use the handler to switch tabs
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF88C999),
                       foregroundColor: Colors.white,
@@ -237,7 +234,6 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
 
           const SizedBox(height: 16),
-
           Column(
             children: [
               Row(
@@ -261,29 +257,23 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16), // Spacing between the rows of cards
+              const SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: _buildQuickActionCard(
-                      icon: Icons.school_rounded, // New Icon
-                      title: 'Education', // New Title
-                      subtitle: 'Learn & Recycle', // New Subtitle
-                      onTap:
-                          () => Navigator.pushNamed(
-                            context,
-                            '/education',
-                          ), // New Navigation
+                      icon: Icons.school_rounded,
+                      title: 'Education',
+                      subtitle: 'Learn & Recycle',
+                      onTap: () => Navigator.pushNamed(context, '/education'),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  // You can add another card here in the future
                   Expanded(child: Container()),
                 ],
               ),
             ],
           ),
-          // --- MODIFICATION END ---
         ],
       ),
     );
@@ -336,9 +326,5 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildScanTab() {
     return const QrDisplayScreen();
-  }
-
-  Widget _buildProfileTab() {
-    return const ProfileScreen();
   }
 }
