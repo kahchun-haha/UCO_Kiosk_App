@@ -58,11 +58,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: SafeArea(
         child: IndexedStack(
           index: _selectedIndex,
-          children: [
-            _buildHomeTab(),
-            _buildScanTab(),
-            _buildProfileTab(),
-          ],
+          children: [_buildHomeTab(), _buildScanTab(), _buildProfileTab()],
         ),
       ),
       bottomNavigationBar: Container(
@@ -118,10 +114,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 children: [
                   const Text(
                     'Hello,',
-                    style: TextStyle(
-                      fontSize: 16,
-                      color: Color(0xFF9CA3AF),
-                    ),
+                    style: TextStyle(fontSize: 16, color: Color(0xFF9CA3AF)),
                   ),
                   Text(
                     _userEmail.split('@')[0],
@@ -134,7 +127,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: const Color(0xFF88C999),
                   borderRadius: BorderRadius.circular(20),
@@ -160,9 +156,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ],
           ),
-          
+
           const SizedBox(height: 32),
-          
+
           // Main Action Card
           Container(
             width: double.infinity,
@@ -195,10 +191,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   'Scan your QR code at the kiosk to start recycling and earn points',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Color(0xFFD8DEE9),
-                  ),
+                  style: TextStyle(fontSize: 16, color: Color(0xFFD8DEE9)),
                 ),
                 const SizedBox(height: 24),
                 SizedBox(
@@ -230,9 +223,9 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
-          
+
           const SizedBox(height: 32),
-          
+
           // Quick Actions
           const Text(
             'Quick Actions',
@@ -242,30 +235,55 @@ class _HomeScreenState extends State<HomeScreen> {
               color: Color(0xFF1F2937),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
-          Row(
+
+          Column(
             children: [
-              Expanded(
-                child: _buildQuickActionCard(
-                  icon: Icons.card_giftcard_rounded,
-                  title: 'Rewards',
-                  subtitle: 'Redeem points',
-                  onTap: () => Navigator.pushNamed(context, '/rewards'),
-                ),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildQuickActionCard(
+                      icon: Icons.card_giftcard_rounded,
+                      title: 'Rewards',
+                      subtitle: 'Redeem points',
+                      onTap: () => Navigator.pushNamed(context, '/rewards'),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: _buildQuickActionCard(
+                      icon: Icons.history_rounded,
+                      title: 'History',
+                      subtitle: 'View activity',
+                      onTap: () {},
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _buildQuickActionCard(
-                  icon: Icons.history_rounded,
-                  title: 'History',
-                  subtitle: 'View activity',
-                  onTap: () {},
-                ),
+              const SizedBox(height: 16), // Spacing between the rows of cards
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildQuickActionCard(
+                      icon: Icons.school_rounded, // New Icon
+                      title: 'Education', // New Title
+                      subtitle: 'Learn & Recycle', // New Subtitle
+                      onTap:
+                          () => Navigator.pushNamed(
+                            context,
+                            '/education',
+                          ), // New Navigation
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // You can add another card here in the future
+                  Expanded(child: Container()),
+                ],
               ),
             ],
           ),
+          // --- MODIFICATION END ---
         ],
       ),
     );
@@ -295,11 +313,7 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(
-              icon,
-              color: const Color(0xFF88C999),
-              size: 32,
-            ),
+            Icon(icon, color: const Color(0xFF88C999), size: 32),
             const SizedBox(height: 12),
             Text(
               title,
@@ -312,10 +326,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 4),
             Text(
               subtitle,
-              style: const TextStyle(
-                fontSize: 14,
-                color: Color(0xFF9CA3AF),
-              ),
+              style: const TextStyle(fontSize: 14, color: Color(0xFF9CA3AF)),
             ),
           ],
         ),

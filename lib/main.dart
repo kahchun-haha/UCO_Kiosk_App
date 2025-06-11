@@ -9,6 +9,8 @@ import 'package:uco_kiosk_app/screens/profile_screen.dart';
 import 'package:uco_kiosk_app/screens/qr_display_screen.dart';
 import 'package:uco_kiosk_app/screens/register_screen.dart';
 import 'package:uco_kiosk_app/screens/reward_screen.dart';
+import 'package:uco_kiosk_app/screens/education_screen.dart';
+import 'package:uco_kiosk_app/screens/education_quiz_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,6 +39,8 @@ class MyApp extends StatelessWidget {
         '/qr_display': (context) => const QrDisplayScreen(),
         '/profile': (context) => const ProfileScreen(),
         '/rewards': (context) => const RewardScreen(),
+        '/education': (context) => const EducationScreen(),
+        '/education_quiz': (context) => const EducationQuizScreen(),
       },
     );
   }

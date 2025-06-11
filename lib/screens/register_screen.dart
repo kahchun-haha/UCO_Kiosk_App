@@ -34,30 +34,33 @@ class _RegisterScreenState extends State<RegisterScreen> {
         _isLoading = true;
       });
 
-      final user = await _authService.registerUser(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
+      try {
+        final user = await _authService.registerUser(
+          _emailController.text.trim(),
+          _passwordController.text.trim(),
+        );
 
-      setState(() {
-        _isLoading = false;
-      });
-
-      if (user != null) {
+        if (user != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Account created successfully!'),
+              backgroundColor: Color(0xFF10B981),
+            ),
+          );
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Account created successfully!'),
-            backgroundColor: Color(0xFF10B981),
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: const Color(0xFFEF4444),
           ),
         );
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to create account. Please try again.'),
-            backgroundColor: Color(0xFFEF4444),
-          ),
-        );
+      } finally {
+        // Ensure isLoading is always set to false
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }

@@ -25,9 +25,10 @@ class AuthService {
         });
       }
       return user;
+    } on FirebaseAuthException catch (e) {
+      throw getAuthErrorMessage(e.code);
     } catch (e) {
-      print("Error registering user: $e");
-      return null;
+      throw 'An unexpected error occurred. Please try again.';
     }
   }
 

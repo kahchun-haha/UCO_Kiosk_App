@@ -46,54 +46,52 @@ class _ProfileScreenState extends State<ProfileScreen> {
     // Show confirmation dialog
     final shouldSignOut = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: const Text(
-          'Sign Out',
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1F2937),
-          ),
-        ),
-        content: const Text(
-          'Are you sure you want to sign out?',
-          style: TextStyle(
-            fontSize: 16,
-            color: Color(0xFF6B7280),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontWeight: FontWeight.w600,
-              ),
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFEF4444),
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-            child: const Text(
+            title: const Text(
               'Sign Out',
-              style: TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1F2937),
+              ),
             ),
+            content: const Text(
+              'Are you sure you want to sign out?',
+              style: TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFEF4444),
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: const Text(
+                  'Sign Out',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     if (shouldSignOut == true) {
@@ -123,7 +121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             children: [
               const SizedBox(height: 20),
-              
+
               // Profile Header Card
               Container(
                 width: double.infinity,
@@ -159,9 +157,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: Colors.white,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 24),
-                    
+
                     // Email
                     Text(
                       _userEmail,
@@ -172,9 +170,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    
+
                     const SizedBox(height: 8),
-                    
+
                     // Username
                     Text(
                       '@${_userEmail.split('@')[0]}',
@@ -184,12 +182,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         fontWeight: FontWeight.w400,
                       ),
                     ),
-                    
+
                     const SizedBox(height: 24),
-                    
+
                     // Points Badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 24,
+                        vertical: 12,
+                      ),
                       decoration: BoxDecoration(
                         color: const Color(0xFF88C999),
                         borderRadius: BorderRadius.circular(25),
@@ -224,9 +225,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // Menu Section
               const Align(
                 alignment: Alignment.centerLeft,
@@ -239,9 +240,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               // Menu Items
               _buildMenuItem(
                 icon: Icons.card_giftcard_rounded,
@@ -249,9 +250,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 subtitle: 'Redeem your points for rewards',
                 onTap: () => Navigator.pushNamed(context, '/rewards'),
               ),
-              
+
               const SizedBox(height: 12),
-              
+
+              _buildMenuItem(
+                icon: Icons.school_rounded,
+                title: 'Education',
+                subtitle: 'Watch videos and earn points',
+                onTap: () => Navigator.pushNamed(context, '/education'),
+              ),
+
+              const SizedBox(height: 12),
+
               _buildMenuItem(
                 icon: Icons.history_rounded,
                 title: 'Recycling History',
@@ -266,9 +276,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               _buildMenuItem(
                 icon: Icons.eco_rounded,
                 title: 'Environmental Impact',
@@ -282,9 +292,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // Support Section
               const Align(
                 alignment: Alignment.centerLeft,
@@ -297,9 +307,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 16),
-              
+
               _buildMenuItem(
                 icon: Icons.help_outline_rounded,
                 title: 'Help & Support',
@@ -313,9 +323,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               _buildMenuItem(
                 icon: Icons.info_outline_rounded,
                 title: 'About UCO Recycling',
@@ -329,9 +339,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
               ),
-              
+
               const SizedBox(height: 12),
-              
+
               _buildMenuItem(
                 icon: Icons.settings_rounded,
                 title: 'Settings',
@@ -345,9 +355,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   );
                 },
               ),
-              
+
               const SizedBox(height: 40),
-              
+
               // Sign Out Button
               SizedBox(
                 width: double.infinity,
@@ -356,10 +366,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   onPressed: _signOut,
                   style: OutlinedButton.styleFrom(
                     foregroundColor: const Color(0xFFEF4444),
-                    side: const BorderSide(
-                      color: Color(0xFFEF4444),
-                      width: 2,
-                    ),
+                    side: const BorderSide(color: Color(0xFFEF4444), width: 2),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
                     ),
@@ -380,9 +387,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                 ),
               ),
-              
+
               const SizedBox(height: 32),
-              
+
               // App Version
               Text(
                 'UCO Kiosk App v1.0.0',
@@ -392,7 +399,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   fontWeight: FontWeight.w400,
                 ),
               ),
-              
+
               const SizedBox(height: 20),
             ],
           ),
@@ -432,15 +439,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: const Color(0xFFF3F4F6),
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Icon(
-                icon,
-                color: const Color(0xFF88C999),
-                size: 24,
-              ),
+              child: Icon(icon, color: const Color(0xFF88C999), size: 24),
             ),
-            
+
             const SizedBox(width: 16),
-            
+
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -464,7 +467,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
             ),
-            
+
             const Icon(
               Icons.arrow_forward_ios_rounded,
               color: Color(0xFF9CA3AF),
