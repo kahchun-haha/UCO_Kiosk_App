@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:uco_kiosk_app/screens/profile_screen.dart';
 import 'package:uco_kiosk_app/screens/qr_display_screen.dart';
 import 'package:uco_kiosk_app/services/auth_service.dart';
+import 'package:uco_kiosk_app/screens/kiosk_status_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -269,7 +270,21 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 16),
-                  Expanded(child: Container()),
+                  Expanded(
+                    child: _buildQuickActionCard(
+                      icon: Icons.bar_chart_rounded, // Changed icon
+                      title: 'Kiosk Status', // Changed title
+                      subtitle: 'View live data', // Changed subtitle
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => KioskStatusScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
                 ],
               ),
             ],
