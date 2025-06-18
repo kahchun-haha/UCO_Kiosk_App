@@ -41,6 +41,8 @@ dependencies:
   screen_brightness: ^2.1.2
   permission_handler: ^11.3.0
   firebase_database: ^10.5.5
+  flutter_local_notifications: ^17.1.2
+  http: ^1.2.1
 
 dev_dependencies:
   flutter_test:

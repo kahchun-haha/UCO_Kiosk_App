@@ -1,11 +1,25 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uco_kiosk_app/services/notification_service.dart';
 
-class KioskStatusScreen extends StatelessWidget {
-  KioskStatusScreen({super.key});
+class KioskStatusScreen extends StatefulWidget {
+  const KioskStatusScreen({super.key});
 
+  @override
+  State<KioskStatusScreen> createState() => _KioskStatusScreenState();
+}
+
+class _KioskStatusScreenState extends State<KioskStatusScreen> {
   final DocumentReference _docRef =
       FirebaseFirestore.instance.collection('kiosk').doc('status');
+  final NotificationService _notificationService = NotificationService();
+  bool _notificationSent = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _notificationService.init();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,87 +41,106 @@ class KioskStatusScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body:
-            // Content
-            StreamBuilder<DocumentSnapshot>(
-                stream: _docRef.snapshots(),
-                builder: (context, AsyncSnapshot<DocumentSnapshot> snapshot) {
-                  if (snapshot.hasError) {
-                    return const Center(child: Text("Something went wrong."));
-                  }
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: _docRef.snapshots(),
+        builder: (context, AsyncSnapshot<DocumentSnapshot> snapshot) {
+          if (snapshot.hasError) {
+            return const Center(child: Text("Something went wrong."));
+          }
 
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(color: Color(0xFF2E3440)),
-                    );
-                  }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: Color(0xFF2E3440)),
+            );
+          }
 
-                  if (snapshot.hasData && snapshot.data!.exists) {
-                    Map<String, dynamic> data =
-                        snapshot.data!.data() as Map<String, dynamic>;
+          if (snapshot.hasData && snapshot.data!.exists) {
+            Map<String, dynamic> data =
+                snapshot.data!.data() as Map<String, dynamic>;
 
-                    int fillLevel = data['fillLevel'] ?? 0;
-                    double weight = (data['weight'] ?? 0.0).toDouble();
-                    int liquidHeight = data['liquidHeight'] ?? 0;
+            int fillLevel = data['fillLevel'] ?? 0;
+            double weight = (data['weight'] ?? 0.0).toDouble();
+            int liquidHeight = data['liquidHeight'] ?? 0;
 
-                    return SingleChildScrollView(
-                      padding: const EdgeInsets.all(24.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Main Status Card
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(24),
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF2E3440), Color(0xFF434C5E)],
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Icon(
-                                  Icons.analytics_rounded,
-                                  color: Color(0xFF88C999),
-                                  size: 48,
-                                ),
-                                const SizedBox(height: 16),
-                                const Text(
-                                  'Kiosk Status',
-                                  style: TextStyle(
-                                    fontSize: 24,
-                                    fontWeight: FontWeight.w700,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _getKioskStatus(fillLevel, weight),
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    color: Color(0xFFD8DEE9),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+            if (fillLevel > 80 && !_notificationSent) {
+              _notificationService.showNotification(
+                'Kiosk Alert',
+                'Kiosk is nearly full and needs attention.',
+              );
 
-                          const SizedBox(height: 32),
+              // Use a post-frame callback to safely update the state after the build.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) {
+                  setState(() {
+                    _notificationSent = true;
+                  });
+                }
+              });
+            } else if (fillLevel <= 80 && _notificationSent) {
+              // Reset the flag if the fill level goes back to normal.
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                 if (mounted) {
+                  setState(() {
+                    _notificationSent = false;
+                  });
+                }
+              });
+            }
 
-                          // Quick Metrics
-                          _buildMetricsGrid(fillLevel, weight, liquidHeight),
-                        ],
+            return SingleChildScrollView(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF2E3440), Color(0xFF434C5E)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
                       ),
-                    );
-                  }
-
-                  return const Center(child: Text("Waiting for data from kiosk..."));
-                },
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(
+                          Icons.analytics_rounded,
+                          color: Color(0xFF88C999),
+                          size: 48,
+                        ),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Kiosk Status',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _getKioskStatus(fillLevel, weight),
+                          style: const TextStyle(
+                            fontSize: 16,
+                            color: Color(0xFFD8DEE9),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  _buildMetricsGrid(fillLevel, weight, liquidHeight),
+                ],
               ),
+            );
+          }
+
+          return const Center(child: Text("Waiting for data from kiosk..."));
+        },
+      ),
     );
   }
 
