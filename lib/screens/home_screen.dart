@@ -272,9 +272,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: _buildQuickActionCard(
-                      icon: Icons.bar_chart_rounded, // Changed icon
-                      title: 'Kiosk Status', // Changed title
-                      subtitle: 'View live data', // Changed subtitle
+                      icon: Icons.bar_chart_rounded,
+                      title: 'Kiosk Status',
+                      subtitle: 'View live data',
                       onTap: () {
                         Navigator.push(
                           context,

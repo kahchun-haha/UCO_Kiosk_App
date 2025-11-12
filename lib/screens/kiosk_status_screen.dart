@@ -246,7 +246,7 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
   }
 
   String _getKioskStatus(int fillLevel, double weight) {
-    if (fillLevel > 80) {
+    if (fillLevel >= 80) {
       return 'Kiosk is nearly full and needs attention';
     } else if (fillLevel > 50) {
       return 'Kiosk is operating normally with moderate usage';
@@ -258,9 +258,9 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
   }
 
   String _getStatusIcon(int fillLevel) {
-    if (fillLevel > 80) {
+    if (fillLevel >= 80) {
       return '🔴';
-    } else if (fillLevel > 50) {
+    } else if (fillLevel >= 50) {
       return '🟡';
     } else {
       return '🟢';
@@ -268,7 +268,7 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
   }
 
   String _getStatusText(int fillLevel) {
-    if (fillLevel > 80) {
+    if (fillLevel >= 80) {
       return 'Nearly full';
     } else if (fillLevel > 50) {
       return 'Moderate';
