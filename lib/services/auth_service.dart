@@ -22,6 +22,7 @@ class AuthService {
           'createdAt': FieldValue.serverTimestamp(),
           'totalRecycled': 0,
           'recyclingHistory': [],
+          'role': 'user',
         });
       }
       return user;

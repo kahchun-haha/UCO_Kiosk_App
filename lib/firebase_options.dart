@@ -51,19 +51,19 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'AIzaSyC4Kwz-L3k4n5Q6EdJnVlmPrCwbH9uSzX0',
-    appId: '1:1053965638081:android:3d6de7a4a754392e3ab740',
-    messagingSenderId: '1053965638081',
-    projectId: 'uco-kiosk-app-6270d',
-    storageBucket: 'uco-kiosk-app-6270d.firebasestorage.app',
+    apiKey: 'AIzaSyD-1IKJGWPQhZfhwSuE7hIj2fIRkMwpNrs',
+    appId: '1:1045517832974:android:ce8f126631e55a91037d5f',
+    messagingSenderId: '1045517832974',
+    projectId: 'uco-kiosk-personal-f92b6',
+    storageBucket: 'uco-kiosk-personal-f92b6.firebasestorage.app',
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCx_h8hLRFUFa4BaDo6CpObRM0CgwBGudk',
-    appId: '1:1053965638081:ios:5b72f8d691d48bcf3ab740',
-    messagingSenderId: '1053965638081',
-    projectId: 'uco-kiosk-app-6270d',
-    storageBucket: 'uco-kiosk-app-6270d.firebasestorage.app',
+    apiKey: 'AIzaSyB4XLdCzGvPMAXiyZ3Tbuf7roUGMIYeZM8',
+    appId: '1:1045517832974:ios:db8ce2bfdf1bf327037d5f',
+    messagingSenderId: '1045517832974',
+    projectId: 'uco-kiosk-personal-f92b6',
+    storageBucket: 'uco-kiosk-personal-f92b6.firebasestorage.app',
     iosBundleId: 'com.example.ucoKioskApp',
   );
 

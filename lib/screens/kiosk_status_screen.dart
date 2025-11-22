@@ -3,15 +3,24 @@ import 'package:flutter/material.dart';
 import 'package:uco_kiosk_app/services/notification_service.dart';
 
 class KioskStatusScreen extends StatefulWidget {
-  const KioskStatusScreen({super.key});
+  // --- ADDED THIS ---
+  // This variable will hold the ID passed from the home screen
+  final String kioskId; 
+
+  // --- MODIFIED THIS ---
+  // The constructor now requires the kioskId
+  const KioskStatusScreen({super.key, required this.kioskId});
 
   @override
   State<KioskStatusScreen> createState() => _KioskStatusScreenState();
 }
 
 class _KioskStatusScreenState extends State<KioskStatusScreen> {
-  final DocumentReference _docRef =
-      FirebaseFirestore.instance.collection('kiosk').doc('status');
+  
+  // --- MODIFIED THIS ---
+  // Removed 'final' and will initialize it in initState
+  late DocumentReference _docRef;
+
   final NotificationService _notificationService = NotificationService();
   bool _notificationSent = false;
 
@@ -19,6 +28,11 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
   void initState() {
     super.initState();
     _notificationService.init();
+
+    // --- ADDED THIS ---
+    // Initialize the document reference using the kioskId from the widget
+    _docRef =
+        FirebaseFirestore.instance.collection('kiosks').doc(widget.kioskId);
   }
 
   @override
@@ -42,7 +56,7 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
         ),
       ),
       body: StreamBuilder<DocumentSnapshot>(
-        stream: _docRef.snapshots(),
+        stream: _docRef.snapshots(), // This will now listen to the correct document
         builder: (context, AsyncSnapshot<DocumentSnapshot> snapshot) {
           if (snapshot.hasError) {
             return const Center(child: Text("Something went wrong."));
@@ -79,7 +93,7 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
             } else if (fillLevel <= 80 && _notificationSent) {
               // Reset the flag if the fill level goes back to normal.
               WidgetsBinding.instance.addPostFrameCallback((_) {
-                 if (mounted) {
+                if (mounted) {
                   setState(() {
                     _notificationSent = false;
                   });

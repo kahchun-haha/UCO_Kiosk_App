@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "uco-kiosk-app-6270d"
-  }
+    "default": "uco-kiosk-personal-f92b6"
+  },
+  "targets": {},
+  "etags": {}
 }

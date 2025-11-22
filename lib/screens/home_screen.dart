@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uco_kiosk_app/screens/kiosk_list_screen.dart';
 import 'package:uco_kiosk_app/screens/profile_screen.dart';
 import 'package:uco_kiosk_app/screens/qr_display_screen.dart';
 import 'package:uco_kiosk_app/services/auth_service.dart';
-import 'package:uco_kiosk_app/screens/kiosk_status_screen.dart';
+import 'package:uco_kiosk_app/screens/recycling_history_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -253,7 +254,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: Icons.history_rounded,
                       title: 'History',
                       subtitle: 'View activity',
-                      onTap: () {},
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder:
+                                (context) => const RecyclingHistoryScreen(),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ],
@@ -279,7 +288,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => KioskStatusScreen(),
+                            builder: (context) => const KioskListScreen(),
                           ),
                         );
                       },

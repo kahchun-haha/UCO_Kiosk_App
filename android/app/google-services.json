@@ -1,13 +1,13 @@
 {
   "project_info": {
-    "project_number": "1053965638081",
-    "project_id": "uco-kiosk-app-6270d",
-    "storage_bucket": "uco-kiosk-app-6270d.firebasestorage.app"
+    "project_number": "1045517832974",
+    "project_id": "uco-kiosk-personal-f92b6",
+    "storage_bucket": "uco-kiosk-personal-f92b6.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:1053965638081:android:3d6de7a4a754392e3ab740",
+        "mobilesdk_app_id": "1:1045517832974:android:ce8f126631e55a91037d5f",
         "android_client_info": {
           "package_name": "com.example.uco_kiosk_app"
         }
@@ -15,7 +15,7 @@
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyC4Kwz-L3k4n5Q6EdJnVlmPrCwbH9uSzX0"
+          "current_key": "AIzaSyD-1IKJGWPQhZfhwSuE7hIj2fIRkMwpNrs"
         }
       ],
       "services": {
