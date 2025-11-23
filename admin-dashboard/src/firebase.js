@@ -1,20 +1,28 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+// src/firebase.js
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getFunctions, httpsCallable } from 'firebase/functions';
 
-// This is your unique configuration object from your screenshot
 const firebaseConfig = {
   apiKey: "AIzaSyD-1IKJGWPQhZfhwSuE7hIj2fIRkMwpNrs",
   authDomain: "uco-kiosk-personal-f92b6.firebaseapp.com",
   projectId: "uco-kiosk-personal-f92b6",
-  storageBucket: "uco-kiosk-personal-f92b6.appspot.com",
-  messagingSenderId: "303212845625",
-  appId: "1:303212845625:web:80893047a0709b578c7c97"
+  storageBucket: "uco-kiosk-personal-f92b6.firebasestorage.app",
+  messagingSenderId: "1045517832974",
+  appId: "1:1045517832974:web:b5658a7160c107f8037d5f"
 };
 
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
-
-// Export the services you need for your dashboard
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const functions = getFunctions(app);
+
+export const createAgentCallable = (data) => {
+  const fn = httpsCallable(functions, 'createAgent');
+  return fn(data);
+};
+export const createAdminCallable = (data) => {
+  const fn = httpsCallable(functions, 'createAdmin');
+  return fn(data);
+};
