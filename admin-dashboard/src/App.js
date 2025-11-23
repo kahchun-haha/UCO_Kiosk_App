@@ -64,20 +64,25 @@ function App(){
 
   const role = userData?.role || 'user';
 
-  return (
+return (
     <Router>
-      <div className="flex min-h-screen">
+      <div className="flex min-h-screen bg-background font-sans"> {/* Applied mobile font/bg */}
         <Sidebar role={role} onLogout={()=>signOut(auth)} />
-        <main className="flex-1 p-8 bg-slate-50">
-          <Routes>
-            <Route path="/" element={<DashboardHome />} />
-            <Route path="/users" element={<UsersPage />} />
-            <Route path="/agents" element={(role === 'admin' || role === 'superadmin') ? <AgentsPage /> : <Navigate to="/" />} />
-            <Route path="/admins" element={(role === 'superadmin') ? <AdminsPage /> : <Navigate to="/" />} />
-            <Route path="/kiosks" element={<KiosksPage />} />
-            <Route path="/tasks" element={<TasksPage />} />
-            <Route path="*" element={<Navigate to="/" />} />
-          </Routes>
+        
+        {/* Main Content Area */}
+        <main className="flex-1 p-8 overflow-y-auto h-screen">
+          <div className="max-w-7xl mx-auto">
+            <Routes>
+              {/* ... your existing routes ... */}
+              <Route path="/" element={<DashboardHome />} />
+              <Route path="/users" element={<UsersPage />} />
+              <Route path="/agents" element={(role === 'admin' || role === 'superadmin') ? <AgentsPage /> : <Navigate to="/" />} />
+              <Route path="/admins" element={(role === 'superadmin') ? <AdminsPage /> : <Navigate to="/" />} />
+              <Route path="/kiosks" element={<KiosksPage />} />
+              <Route path="/tasks" element={<TasksPage />} />
+              <Route path="*" element={<Navigate to="/" />} />
+            </Routes>
+          </div>
         </main>
       </div>
     </Router>

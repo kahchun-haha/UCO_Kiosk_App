@@ -2,8 +2,10 @@ const {
   onDocumentUpdated,
   onDocumentCreated
 } = require("firebase-functions/v2/firestore");
+const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
 const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getAuth } = require("firebase-admin/auth");
 
 // Initialize Firebase Admin
 initializeApp();
@@ -59,8 +61,9 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
     if (!crossedThreshold) return null;
 
     // Check existing pending tasks
+    // FIXED: Used 'collection_tasks' to match your Firestore Screenshot
     const pendingTasks = await db
-      .collection("collectionTasks")
+      .collection("collection_tasks") 
       .where("kioskId", "==", kioskId)
       .where("status", "==", "pending")
       .get();
@@ -72,7 +75,8 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
 
     console.log(`Creating NEW collection task for kiosk ${kioskId}.`);
 
-    return db.collection("collectionTasks").add({
+    // FIXED: Used 'collection_tasks' to match your Firestore Screenshot
+    return db.collection("collection_tasks").add({
       kioskId,
       kioskName: after.name || "Unnamed Kiosk",
       status: "pending",
@@ -176,3 +180,69 @@ exports.awardPointsOnDeposit = onDocumentCreated(
     return null;
   }
 );
+
+// ===============================================================
+//  FUNCTION 3: Securely Create Admin
+// ===============================================================
+exports.createAdmin = onCall(async (request) => {
+  const { email, password, name } = request.data;
+
+  try {
+    // 1. Create user in Firebase Auth
+    const userRecord = await getAuth().createUser({
+      email,
+      password,
+      displayName: name,
+    });
+
+    // 2. Create user profile in Firestore
+    await db.collection("users").doc(userRecord.uid).set({
+      email,
+      name,
+      role: "admin",
+      createdAt: FieldValue.serverTimestamp(),
+      active: true
+    });
+
+    return { success: true, message: "Admin created successfully." };
+  } catch (error) {
+    console.error("Error creating admin:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// ===============================================================
+//  FUNCTION 4: Securely Create Agent
+// ===============================================================
+exports.createAgent = onCall(async (request) => {
+  // Agents have extra fields like phone, staffId, region
+  const { email, password, name, phone, staffId, region } = request.data;
+
+  try {
+    // 1. Create user in Firebase Auth
+    const userRecord = await getAuth().createUser({
+      email,
+      password,
+      displayName: name,
+    });
+
+    // 2. Create user profile in Firestore with AGENT specific fields
+    await db.collection("users").doc(userRecord.uid).set({
+      email,
+      name,
+      role: "agent",
+      phone: phone || "",
+      staffId: staffId || "",
+      region: region || "",
+      createdAt: FieldValue.serverTimestamp(),
+      active: true,
+      // Initialize agent stats
+      tasksCompleted: 0 
+    });
+
+    return { success: true, message: "Agent created successfully." };
+  } catch (error) {
+    console.error("Error creating agent:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
