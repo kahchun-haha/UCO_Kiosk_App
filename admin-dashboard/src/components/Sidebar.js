@@ -7,35 +7,38 @@ export default function Sidebar({ role, onLogout }) {
     <NavLink 
       to={to} 
       className={({ isActive }) => 
-        `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 ${
+        `flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 mb-1 ${
           isActive 
             ? "bg-primary text-white shadow-md shadow-primary/30 font-semibold" 
-            : "text-gray-300 hover:bg-white/10 hover:text-white"
+            : "text-gray-400 hover:bg-white/5 hover:text-white"
         }`
       }
     >
       <span className="text-xl">{icon}</span>
-      <span className="text-sm">{label}</span>
+      <span className="text-sm font-medium">{label}</span>
     </NavLink>
   );
 
   return (
-    <aside className="w-72 bg-gradient-to-b from-dark to-dark-light text-white min-h-screen p-6 flex flex-col shadow-xl z-10">
-      {/* UPDATED HEADER */}
+    // CHANGED: Removed 'bg-gradient-to-b from-dark to-dark-light'
+    // ADDED: 'bg-dark' (Solid Color) and 'border-r border-white/5' for subtle definition
+    <aside className="w-72 bg-dark text-white min-h-screen p-6 flex flex-col shadow-xl z-10 border-r border-white/5">
+      
+      {/* Header */}
       <div className="mb-10 px-2">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 bg-white/10 rounded-full flex items-center justify-center text-2xl">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center text-2xl text-primary">
             ♻️
           </div>
-          <h1 className="text-xl font-bold tracking-wide">UMinyak</h1>
+          <span className="text-xl font-bold tracking-wide text-white">UMinyak</span>
         </div>
-        <p className="text-xs text-gray-400 uppercase tracking-wider font-semibold ml-1">
+        <p className="text-xs text-gray-500 uppercase tracking-wider font-bold ml-1">
           {role === 'superadmin' ? 'Super Admin Console' : 'Admin Dashboard'}
         </p>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 flex flex-col gap-2">
+      <nav className="flex-1 flex flex-col">
         <NavItem to="/" icon="📊" label="Dashboard" />
         <NavItem to="/users" icon="👥" label="Users" />
         <NavItem to="/kiosks" icon="📍" label="Kiosks" />
@@ -43,8 +46,8 @@ export default function Sidebar({ role, onLogout }) {
         
         {(role === 'admin' || role === 'superadmin') && (
           <>
-            <div className="my-4 border-t border-white/10 mx-2"></div>
-            <p className="px-4 text-xs text-gray-500 font-semibold mb-2 uppercase">Management</p>
+            <div className="my-6 border-t border-white/5 mx-2"></div>
+            <p className="px-4 text-xs text-gray-500 font-bold mb-3 uppercase">Management</p>
             <NavItem to="/agents" icon="🛡️" label="Agents" />
           </>
         )}
@@ -55,10 +58,10 @@ export default function Sidebar({ role, onLogout }) {
       </nav>
 
       {/* Logout */}
-      <div className="mt-auto pt-6">
+      <div className="mt-auto pt-6 border-t border-white/5">
         <button 
           onClick={onLogout} 
-          className="w-full flex items-center justify-center gap-2 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-white px-4 py-3 rounded-xl transition-all duration-200"
+          className="w-full flex items-center justify-center gap-2 text-red-400 hover:bg-red-500/10 hover:text-red-300 px-4 py-3 rounded-xl transition-all duration-200"
         >
           <span>🚪</span>
           <span className="font-medium">Sign Out</span>

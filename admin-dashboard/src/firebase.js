@@ -26,3 +26,8 @@ export const createAdminCallable = (data) => {
   const fn = httpsCallable(functions, 'createAdmin');
   return fn(data);
 };
+
+export const deleteUserCallable = (data) => {
+  const fn = httpsCallable(functions, 'deleteUser');
+  return fn(data);
+};

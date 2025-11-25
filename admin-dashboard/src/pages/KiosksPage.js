@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
+import { useEffect, useState } from 'react';
 import { db } from '../firebase';
 
 export default function KiosksPage() {
@@ -18,6 +18,15 @@ export default function KiosksPage() {
     return 'bg-green-100 text-green-600 border-green-200'; // Good
   };
 
+  // Function to determine if kiosk is online (e.g., updated in last 15 mins)
+  const isKioskOnline = (lastUpdated) => {
+    if (!lastUpdated) return false;
+    const now = new Date();
+    const lastUpdateDate = new Date(lastUpdated.seconds * 1000);
+    const diffInMinutes = (now - lastUpdateDate) / 1000 / 60;
+    return diffInMinutes < 15; // Considered online if updated within 15 mins
+  };
+
   return (
     <div>
       <div className="mb-6">
@@ -29,13 +38,26 @@ export default function KiosksPage() {
         {kiosks.map(k => {
           const fill = k.fillLevel || 0;
           const statusClass = getStatusColor(fill);
+          const isOnline = isKioskOnline(k.lastUpdated || k.lastCollected); // Check online status
           
+          // Display Name Logic: Location -> Kiosk Name -> "Unknown Location"
+          const displayName = k.location || k.name || 'Unknown Location';
+
           return (
-            <div key={k.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-full">
-              <div className="flex justify-between items-start mb-4">
+            <div key={k.id} className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between h-full relative overflow-hidden">
+              
+              {/* Online/Offline Indicator Strip */}
+              <div className={`absolute top-0 left-0 w-1 h-full ${isOnline ? 'bg-green-500' : 'bg-gray-300'}`}></div>
+
+              <div className="flex justify-between items-start mb-4 pl-2">
                 <div>
-                  <h3 className="font-bold text-lg text-text-main">{k.location || 'Unknown Location'}</h3>
-                  <p className="text-xs text-text-sub font-mono mt-1">ID: {k.id.slice(0,8)}...</p>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-lg text-text-main">{displayName}</h3>
+                    {/* Online/Offline Dot */}
+                    <span className={`w-2.5 h-2.5 rounded-full ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} title={isOnline ? "Online" : "Offline"}></span>
+                  </div>
+                  {/* Full ID Display */}
+                  <p className="text-xs text-text-sub font-mono mt-1 select-all" title={k.id}>ID: {k.id}</p>
                 </div>
                 <div className={`px-3 py-1 rounded-full text-sm font-bold border ${statusClass}`}>
                   {fill}% Full
@@ -43,18 +65,19 @@ export default function KiosksPage() {
               </div>
 
               {/* Visual Fill Bar */}
-              <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden mb-6">
+              <div className="w-full bg-gray-100 h-3 rounded-full overflow-hidden mb-6 mx-2" style={{width: 'calc(100% - 16px)'}}>
                 <div 
                   className={`h-full transition-all duration-500 ${fill > 80 ? 'bg-red-500' : fill > 50 ? 'bg-orange-500' : 'bg-primary'}`} 
                   style={{ width: `${fill}%` }}
                 ></div>
               </div>
 
-              <div className="mt-auto space-y-2 border-t border-gray-100 pt-4">
+              <div className="mt-auto space-y-2 border-t border-gray-100 pt-4 pl-2">
                 <div className="flex justify-between text-sm">
-                  <span className="text-text-sub">Last Collected:</span>
+                  <span className="text-text-sub">Last Updated:</span>
                   <span className="font-medium text-text-main">
-                    {k.lastCollected ? new Date(k.lastCollected.seconds*1000).toLocaleDateString() : 'Never'}
+                    {/* Prefer lastUpdated timestamp, fallback to lastCollected */}
+                    {(k.lastUpdated || k.lastCollected) ? new Date((k.lastUpdated || k.lastCollected).seconds * 1000).toLocaleString() : 'Never'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">

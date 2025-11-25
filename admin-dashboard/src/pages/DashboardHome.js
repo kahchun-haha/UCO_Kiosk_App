@@ -14,7 +14,7 @@ export default function DashboardHome() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        // 1. Count Users
+        // 1. Count Users (Role 'user' only)
         const usersColl = collection(db, 'users');
         const usersSnap = await getCountFromServer(query(usersColl, where('role', '==', 'user')));
         
@@ -23,20 +23,23 @@ export default function DashboardHome() {
         const kiosksSnap = await getCountFromServer(kiosksColl);
 
         // 3. Count Pending Tasks
-        const tasksColl = collection(db, 'collection_tasks'); // Note: snake_case matches your rules
+        const tasksColl = collection(db, 'collection_tasks'); 
         const tasksSnap = await getCountFromServer(query(tasksColl, where('status', '==', 'pending')));
 
-        // 4. Sum Total Volume (Optional: Sum 'totalVolume' from users)
-        // This calculates the sum of the 'totalVolume' field across all users
+        // 4. Sum Total Volume (FIXED: Using correct field 'totalRecycled')
         const volumeSnap = await getAggregateFromServer(usersColl, {
-          totalVol: sum('totalVolume')
+          totalGrams: sum('totalRecycled') // Summing grams first
         });
+
+        // Convert Grams to Liters
+        const totalGrams = volumeSnap.data().totalGrams || 0;
+        const totalLiters = (totalGrams / 1000).toFixed(1); // Convert to Liters, 1 decimal place
 
         setStats({
           users: usersSnap.data().count,
           kiosks: kiosksSnap.data().count,
           tasks: tasksSnap.data().count,
-          volume: volumeSnap.data().totalVol || 0
+          volume: totalLiters // Store the converted Liters
         });
       } catch (e) {
         console.error("Error fetching stats:", e);

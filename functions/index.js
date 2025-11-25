@@ -98,46 +98,40 @@ exports.awardPointsOnDeposit = onDocumentCreated(
     region: REGION,
   },
   async (event) => {
-    if (!event.data) {
-      console.log("No deposit data found.");
-      return null;
-    }
+    if (!event.data) return null;
 
     const deposit = event.data.data();
     const userId = deposit.userId;
     const weightInGrams = deposit.weight;
 
-    if (!userId || !weightInGrams) {
-      console.log("Deposit missing userId or weight.");
-      return null;
-    }
+    if (!userId || !weightInGrams) return null;
 
-    // Your reward logic: 1 point per 10g
+    // Logic: 1 point per 10g
     const pointsToAward = Math.floor(weightInGrams / 10);
-
-    console.log(
-      `NEW DEPOSIT → user: ${userId} | weight: ${weightInGrams}g | points: ${pointsToAward}`
-    );
-
     const userRef = db.collection("users").doc(userId);
 
     // ------------------------------------------------
-    // Update user points + totalRecycled
+    // 1. UPDATE USER AGGREGATES (The Professional Fix)
     // ------------------------------------------------
     try {
       await userRef.update({
         points: FieldValue.increment(pointsToAward),
-        totalRecycled: FieldValue.increment(weightInGrams),
+        
+        // Matches 'totalRecycled' in your DB. We divide by 1000 in frontend to get Liters/Kg.
+        totalRecycled: FieldValue.increment(weightInGrams), 
+        
+        // NEW: Explicitly count the deposit
+        depositCount: FieldValue.increment(1), 
+        
         lastDepositAt: FieldValue.serverTimestamp(),
       });
-
-      console.log(`Awarded ${pointsToAward} points to user ${userId}.`);
+      console.log(`Updated aggregates for user ${userId}`);
     } catch (err) {
       console.error(`Error updating user:`, err);
     }
 
     // ------------------------------------------------
-    // Add to user recyclingHistory subcollection
+    // 2. Add to user recyclingHistory subcollection
     // ------------------------------------------------
     try {
       await db
@@ -150,14 +144,12 @@ exports.awardPointsOnDeposit = onDocumentCreated(
           weight: weightInGrams,
           timestamp: FieldValue.serverTimestamp(),
         });
-
-      console.log(`Added deposit to user recycling history.`);
     } catch (err) {
       console.error("Error writing to user recyclingHistory:", err);
     }
 
     // ------------------------------------------------
-    // Add to kiosk deposit history
+    // 3. Add to kiosk deposit history
     // ------------------------------------------------
     try {
       if (deposit.kioskId) {
@@ -170,8 +162,6 @@ exports.awardPointsOnDeposit = onDocumentCreated(
             weight: weightInGrams,
             timestamp: FieldValue.serverTimestamp(),
           });
-
-        console.log(`Added deposit to kiosk deposit history.`);
       }
     } catch (err) {
       console.error("Error writing to kiosk deposits:", err);
@@ -243,6 +233,31 @@ exports.createAgent = onCall(async (request) => {
     return { success: true, message: "Agent created successfully." };
   } catch (error) {
     console.error("Error creating agent:", error);
+    throw new HttpsError("internal", error.message);
+  }
+});
+
+// ===============================================================
+//  FUNCTION 5: Securely Delete User (Super Admin Only)
+// ===============================================================
+exports.deleteUser = onCall(async (request) => {
+  const { targetUid } = request.data;
+
+  // Security Check: Ensure the caller is logged in
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "User must be logged in.");
+  }
+
+  try {
+    // 1. Remove from Firebase Authentication (Prevent login)
+    await getAuth().deleteUser(targetUid);
+
+    // 2. Remove from Firestore (Clean up data)
+    await db.collection("users").doc(targetUid).delete();
+
+    return { success: true, message: "User successfully deleted." };
+  } catch (error) {
+    console.error("Error deleting user:", error);
     throw new HttpsError("internal", error.message);
   }
 });
