@@ -121,7 +121,7 @@ export default function UsersPage() {
                 <div className="text-center md:text-right w-32 hidden sm:block">
                   <p className="text-xs text-text-sub uppercase font-bold">Joined</p>
                   <p className="font-medium text-text-main text-sm">
-                    {u.createdAt ? new Date(u.createdAt.seconds * 1000).toLocaleDateString() : '—'}
+                    {u.createdAt ? new Date(u.createdAt.seconds * 1000).toLocaleDateString('en-GB') : '—'}
                   </p>
                 </div>
               </div>

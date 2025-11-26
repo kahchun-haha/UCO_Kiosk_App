@@ -139,7 +139,7 @@ export default function AgentsPage() {
             {/* Footer / Stats */}
             <div className="mt-4 pt-4 border-t border-gray-100 flex justify-between items-center">
               <div className="text-xs text-gray-400">
-                Joined: {a.createdAt ? new Date(a.createdAt.seconds * 1000).toLocaleDateString() : 'Unknown'}
+                Joined: {a.createdAt ? new Date(a.createdAt.seconds * 1000).toLocaleDateString('en-GB') : 'Unknown'}
               </div>
               <button 
                 onClick={() => handleDelete(a.id, a.name)}

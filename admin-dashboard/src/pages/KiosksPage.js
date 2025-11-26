@@ -77,7 +77,7 @@ export default function KiosksPage() {
                   <span className="text-text-sub">Last Updated:</span>
                   <span className="font-medium text-text-main">
                     {/* Prefer lastUpdated timestamp, fallback to lastCollected */}
-                    {(k.lastUpdated || k.lastCollected) ? new Date((k.lastUpdated || k.lastCollected).seconds * 1000).toLocaleString() : 'Never'}
+                    {(k.lastUpdated || k.lastCollected) ? new Date((k.lastUpdated || k.lastCollected).seconds * 1000).toLocaleString('en-GB') : 'Never'}
                   </span>
                 </div>
                 <div className="flex justify-between text-sm">

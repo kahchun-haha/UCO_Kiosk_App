@@ -46,7 +46,7 @@ export default function TasksPage() {
                     </span>
                     {t.createdAt && (
                       <span className="text-xs text-text-sub py-0.5">
-                        Created: {new Date(t.createdAt.seconds * 1000).toLocaleDateString()}
+                        Created: {new Date(t.createdAt.seconds * 1000).toLocaleDateString('en-GB')}
                       </span>
                     )}
                   </div>
