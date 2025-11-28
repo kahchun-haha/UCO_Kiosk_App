@@ -63,7 +63,7 @@ class AuthService {
 
   // Generate unique QR code for user
   String generateUniqueQrCode(String userId) {
-    return 'uco_user_$userId';
+    return userId;
   }
 
   // Get user document from Firestore
