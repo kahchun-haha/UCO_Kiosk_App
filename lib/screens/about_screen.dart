@@ -16,7 +16,7 @@ class AboutScreen extends StatelessWidget {
           onPressed: () => Navigator.pop(context),
         ),
         title: const Text(
-          'About UCO',
+          'About UMinyak',
           style: TextStyle(
             color: Color(0xFF1F2937),
             fontWeight: FontWeight.w700,
@@ -44,7 +44,7 @@ class AboutScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             const Text(
-              "UCO Kiosk App",
+              "UMinyak Kiosk App",
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: Color(0xFF1F2937)),
             ),
             const SizedBox(height: 8),
@@ -73,6 +73,7 @@ class AboutScreen extends StatelessWidget {
                   SizedBox(height: 12),
                   Text(
                     "We aim to create a sustainable environment by transforming used cooking oil into renewable energy. By participating, you prevent water pollution and earn rewards for your contribution to a greener planet.",
+                    textAlign: TextAlign.justify,
                     style: TextStyle(fontSize: 14, color: Color(0xFF6B7280), height: 1.6),
                   ),
                 ],
@@ -91,7 +92,7 @@ class AboutScreen extends StatelessWidget {
             const SizedBox(height: 40),
             
             Text(
-              "© 2025 UNIVERSITI MALAYA.\nAll rights reserved.",
+              "© 2025 UMinyak.\nAll rights reserved.",
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 12, color: Colors.grey[400]),
             ),

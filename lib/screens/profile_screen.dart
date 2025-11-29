@@ -327,7 +327,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   _buildMenuItem(
                     icon: Icons.info_outline_rounded,
-                    title: 'About UCO Recycling',
+                    title: 'About UMinyak',
                     subtitle: 'Learn more about our mission',
                     onTap: () {
                       Navigator.push(
@@ -387,7 +387,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                   // App Version
                   Text(
-                    'UCO Kiosk App v1.0.0',
+                    'UMinyak Kiosk App v1.0.0',
                     style: TextStyle(
                       fontSize: 14,
                       color: Colors.grey[400],

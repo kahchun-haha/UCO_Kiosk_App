@@ -46,7 +46,7 @@ class LandingScreen extends StatelessWidget {
               const SizedBox(height: 8),
               
               const Text(
-                'UMinyak Recycling Kiosk',
+                'UMinyak Kiosk App',
                 style: TextStyle(
                   fontSize: 32,
                   color: Color(0xFF1F2937),
