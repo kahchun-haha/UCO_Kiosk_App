@@ -4,8 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'deposit_detail_screen.dart'; // new file (see below)
-import 'monthly_chart_widget.dart'; // optional chart widget (see later)
+import 'deposit_detail_screen.dart';
+import 'monthly_chart_widget.dart';
 import 'package:uco_kiosk_app/screens/kiosk_list_screen.dart';
 
 enum HistoryFilter { all, thisMonth, lastMonth }
@@ -18,42 +18,19 @@ class RecyclingHistoryScreen extends StatefulWidget {
 }
 
 class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
-  HistoryFilter _filter = HistoryFilter.thisMonth;
+  HistoryFilter _filter = HistoryFilter.all;
 
   Query _buildQuery(String uid) {
     final coll = FirebaseFirestore.instance.collection('deposits');
-    Query q = coll
+    
+    // STANDARD: Querying by the standard 'timestamp' field.
+    return coll
         .where('userId', isEqualTo: uid)
         .orderBy('timestamp', descending: true);
-
-    if (_filter == HistoryFilter.thisMonth) {
-      final now = DateTime.now();
-      final start = DateTime(now.year, now.month, 1);
-      q = q.where(
-        'timestamp',
-        isGreaterThanOrEqualTo: Timestamp.fromDate(start),
-      );
-    } else if (_filter == HistoryFilter.lastMonth) {
-      final now = DateTime.now();
-      DateTime startOfThisMonth = DateTime(now.year, now.month, 1);
-      DateTime startOfLastMonth = DateTime(
-        startOfThisMonth.year,
-        startOfThisMonth.month - 1,
-        1,
-      );
-      q = q
-          .where(
-            'timestamp',
-            isGreaterThanOrEqualTo: Timestamp.fromDate(startOfLastMonth),
-          )
-          .where('timestamp', isLessThan: Timestamp.fromDate(startOfThisMonth));
-    }
-
-    return q;
   }
 
   String _formatTimestamp(Timestamp? ts) {
-    if (ts == null) return 'Unknown';
+    if (ts == null) return 'Unknown Date';
     final dt = ts.toDate().toLocal();
     return DateFormat('dd MMM yyyy, h:mm a').format(dt);
   }
@@ -64,7 +41,6 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
   }
 
   int _computePointsFromWeight(double grams) {
-    // Adjust to your desired formula (example: 1 point per 10 g)
     return (grams / 10).round();
   }
 
@@ -74,10 +50,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
     if (user == null) {
       return Scaffold(
         backgroundColor: const Color(0xFFF8F9FA),
-        appBar: AppBar(
-          title: const Text('Recycling History'),
-          backgroundColor: const Color(0xFF2E3440),
-        ),
+        appBar: AppBar(title: const Text('Recycling History')),
         body: const Center(child: Text('Please sign in')),
       );
     }
@@ -101,7 +74,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
         padding: const EdgeInsets.all(24),
         child: Column(
           children: [
-            // filter + small chart button
+            // Filter Row
             Row(
               children: [
                 const Text(
@@ -125,15 +98,11 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                       child: Text('All'),
                     ),
                   ],
-                  onChanged:
-                      (v) => setState(
-                        () => _filter = v ?? HistoryFilter.thisMonth,
-                      ),
+                  onChanged: (v) => setState(() => _filter = v ?? HistoryFilter.all),
                 ),
                 const Spacer(),
                 IconButton(
                   onPressed: () {
-                    // Open chart screen or modal
                     Navigator.push(
                       context,
                       MaterialPageRoute(
@@ -150,95 +119,96 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
             ),
             const SizedBox(height: 12),
 
-            // StreamBuilder of deposits
+            // Data Stream
             Expanded(
               child: StreamBuilder<QuerySnapshot>(
                 stream: query.snapshots(),
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF88C999),
-                      ),
-                    );
+                    return const Center(child: CircularProgressIndicator(color: Color(0xFF88C999)));
                   }
                   if (snap.hasError) {
                     return const Center(child: Text('Something went wrong.'));
                   }
+                  
                   final docs = snap.data?.docs ?? [];
-                  if (docs.isEmpty) {
+                  
+                  // OPTIONAL: Client-side filtering logic
+                  // Since we removed complex server queries, we filter the list here if needed.
+                  final filteredDocs = docs.where((doc) {
+                    if (_filter == HistoryFilter.all) return true;
+                    
+                    final d = doc.data() as Map<String, dynamic>;
+                    if (d['timestamp'] == null) return false;
+                    
+                    final date = (d['timestamp'] as Timestamp).toDate();
+                    final now = DateTime.now();
+                    
+                    if (_filter == HistoryFilter.thisMonth) {
+                      return date.year == now.year && date.month == now.month;
+                    } else if (_filter == HistoryFilter.lastMonth) {
+                      final lastMonth = DateTime(now.year, now.month - 1);
+                      return date.year == lastMonth.year && date.month == lastMonth.month;
+                    }
+                    return true;
+                  }).toList();
+
+                  if (filteredDocs.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(
-                            Icons.history_rounded,
-                            size: 64,
-                            color: Color(0xFF9CA3AF),
-                          ),
+                          const Icon(Icons.history_rounded, size: 64, color: Color(0xFF9CA3AF)),
                           const SizedBox(height: 12),
                           const Text(
-                            'No recycling activity yet.',
+                            'No recycling activity found.',
                             style: TextStyle(color: Color(0xFF6B7280)),
-                          ),
-                          const SizedBox(height: 12),
-                          ElevatedButton(
-                            onPressed: () {
-                              // CTA: open kiosk list
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => const KioskListScreen(),
-                                ),
-                              );
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF88C999),
-                            ),
-                            child: const Text('Find a kiosk'),
                           ),
                         ],
                       ),
                     );
                   }
 
-                  // compute summary
+                  // Calculate Totals
                   double total = 0;
                   int totalPoints = 0;
-                  final items =
-                      docs.map((doc) {
-                        final d = doc.data()! as Map<String, dynamic>;
-                        final weight =
-                            (d['weight'] is int)
-                                ? (d['weight'] as int).toDouble()
-                                : (d['weight'] ?? 0.0);
-                        total += weight;
-                        int points;
-                        if (d.containsKey('points')) {
-                          final p = d['points'];
-                          points =
-                              (p is int)
-                                  ? p
-                                  : (p is double
-                                      ? p.round()
-                                      : int.tryParse(p.toString()) ?? 0);
-                        } else {
-                          points = _computePointsFromWeight(weight);
-                        }
-                        totalPoints += points;
-                        return {
-                          'id': doc.id,
-                          'kioskId': d['kioskId'] ?? 'Unknown',
-                          'weight': weight,
-                          'timestamp': d['timestamp'] as Timestamp?,
-                          'points': points,
-                        };
-                      }).toList();
+                  
+                  final items = filteredDocs.map((doc) {
+                    final d = doc.data() as Map<String, dynamic>;
+                    
+                    final weight = (d['weight'] is int)
+                        ? (d['weight'] as int).toDouble()
+                        : (d['weight'] ?? 0.0);
+                    
+                    int points;
+                    if (d.containsKey('points')) {
+                      final p = d['points'];
+                      points = (p is int)
+                          ? p
+                          : (p is double ? p.round() : int.tryParse(p.toString()) ?? 0);
+                    } else {
+                      points = _computePointsFromWeight(weight);
+                    }
+
+                    // STANDARD: Direct timestamp usage
+                    final ts = d['timestamp'] as Timestamp?;
+
+                    total += weight;
+                    totalPoints += points;
+
+                    return {
+                      'id': doc.id,
+                      'kioskId': d['kioskId'] ?? 'Unknown',
+                      'weight': weight,
+                      'timestamp': ts,
+                      'points': points,
+                    };
+                  }).toList();
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // summary
+                      // Summary Card
                       Container(
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
@@ -252,17 +222,11 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text(
-                                  'Total Recycled',
-                                  style: TextStyle(color: Color(0xFFD8DEE9)),
-                                ),
+                                const Text('Total Recycled', style: TextStyle(color: Color(0xFFD8DEE9))),
                                 const SizedBox(height: 6),
                                 Text(
                                   '${(total / 1000).toStringAsFixed(3)} kg',
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
                                 ),
                               ],
                             ),
@@ -270,17 +234,11 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                const Text(
-                                  'Points',
-                                  style: TextStyle(color: Color(0xFFD8DEE9)),
-                                ),
+                                const Text('Points', style: TextStyle(color: Color(0xFFD8DEE9))),
                                 const SizedBox(height: 6),
                                 Text(
                                   '$totalPoints pts',
-                                  style: const TextStyle(
-                                    color: Color(0xFF88C999),
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                  style: const TextStyle(color: Color(0xFF88C999), fontWeight: FontWeight.w700),
                                 ),
                               ],
                             ),
@@ -288,28 +246,20 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      // list
+                      
+                      // List
                       Expanded(
                         child: ListView.separated(
                           itemCount: items.length,
-                          separatorBuilder:
-                              (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
                           itemBuilder: (context, i) {
                             final it = items[i];
-                            final weight = it['weight'] as double;
-                            final kioskId = it['kioskId'] as String;
-                            final ts = it['timestamp'] as Timestamp?;
-                            final points = it['points'] as int;
-
                             return InkWell(
                               onTap: () {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder:
-                                        (_) => DepositDetailScreen(
-                                          depositId: it['id'],
-                                        ),
+                                    builder: (_) => DepositDetailScreen(depositId: it['id'] as String),
                                   ),
                                 );
                               },
@@ -334,75 +284,49 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                         color: const Color(0xFFF1F5F9),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: const Icon(
-                                        Icons.inbox_rounded,
-                                        color: Color(0xFF88C999),
-                                      ),
+                                      child: const Icon(Icons.inbox_rounded, color: Color(0xFF88C999)),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            _formatKgAndG(weight),
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w700,
-                                              fontSize: 16,
-                                            ),
+                                            _formatKgAndG(it['weight'] as double),
+                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            'Kiosk: $kioskId',
-                                            style: const TextStyle(
-                                              color: Color(0xFF6B7280),
-                                            ),
+                                            'Kiosk: ${it['kioskId']}',
+                                            style: const TextStyle(color: Color(0xFF6B7280)),
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            _formatTimestamp(ts),
-                                            style: const TextStyle(
-                                              color: Color(0xFF9CA3AF),
-                                              fontSize: 12,
-                                            ),
+                                            _formatTimestamp(it['timestamp'] as Timestamp?),
+                                            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
                                           ),
                                         ],
                                       ),
                                     ),
                                     Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
+                                      crossAxisAlignment: CrossAxisAlignment.end,
                                       children: [
                                         Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 6,
-                                          ),
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
+                                            borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Row(
                                             children: [
-                                              const Icon(
-                                                Icons.stars_rounded,
-                                                size: 14,
-                                                color: Color(0xFF88C999),
-                                              ),
+                                              const Icon(Icons.stars_rounded, size: 14, color: Color(0xFF88C999)),
                                               const SizedBox(width: 6),
-                                              Text('+$points'),
+                                              Text('+${it['points']}'),
                                             ],
                                           ),
                                         ),
                                         const SizedBox(height: 8),
-                                        const Icon(
-                                          Icons.arrow_forward_ios_rounded,
-                                          size: 14,
-                                          color: Color(0xFF9CA3AF),
-                                        ),
+                                        const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF9CA3AF)),
                                       ],
                                     ),
                                   ],
