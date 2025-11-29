@@ -10,19 +10,24 @@ class KioskListScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF8F9FA),
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFF1F2937),
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'Select Kiosk',
           style: TextStyle(
-            fontSize: 20,
+            color: Color(0xFF1F2937),
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            fontSize: 20,
           ),
-        ),
-        backgroundColor: const Color(0xFF2E3440),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
         ),
       ),
 
@@ -49,8 +54,7 @@ class KioskListScreen extends StatelessWidget {
               itemCount: snapshot.data!.docs.length,
               itemBuilder: (context, index) {
                 DocumentSnapshot doc = snapshot.data!.docs[index];
-                Map<String, dynamic> data =
-                    doc.data()! as Map<String, dynamic>;
+                Map<String, dynamic> data = doc.data()! as Map<String, dynamic>;
 
                 String kioskName = data['name'] ?? 'Kiosk ${doc.id}';
                 int fillLevel = data['fillLevel'] ?? 0;
@@ -60,8 +64,8 @@ class KioskListScreen extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) =>
-                            KioskStatusScreen(kioskId: doc.id),
+                        builder:
+                            (context) => KioskStatusScreen(kioskId: doc.id),
                       ),
                     );
                   },

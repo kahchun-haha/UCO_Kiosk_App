@@ -5,7 +5,7 @@ import 'package:uco_kiosk_app/services/notification_service.dart';
 class KioskStatusScreen extends StatefulWidget {
   // --- ADDED THIS ---
   // This variable will hold the ID passed from the home screen
-  final String kioskId; 
+  final String kioskId;
 
   // --- MODIFIED THIS ---
   // The constructor now requires the kioskId
@@ -16,7 +16,6 @@ class KioskStatusScreen extends StatefulWidget {
 }
 
 class _KioskStatusScreenState extends State<KioskStatusScreen> {
-  
   // --- MODIFIED THIS ---
   // Removed 'final' and will initialize it in initState
   late DocumentReference _docRef;
@@ -31,8 +30,9 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
 
     // --- ADDED THIS ---
     // Initialize the document reference using the kioskId from the widget
-    _docRef =
-        FirebaseFirestore.instance.collection('kiosks').doc(widget.kioskId);
+    _docRef = FirebaseFirestore.instance
+        .collection('kiosks')
+        .doc(widget.kioskId);
   }
 
   @override
@@ -40,23 +40,30 @@ class _KioskStatusScreenState extends State<KioskStatusScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF8F9FA),
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFF1F2937),
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'Kiosk Status',
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            color: Color(0xFF1F2937),
           ),
         ),
-        backgroundColor: const Color(0xFF2E3440),
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
-        ),
       ),
+
       body: StreamBuilder<DocumentSnapshot>(
-        stream: _docRef.snapshots(), // This will now listen to the correct document
+        stream:
+            _docRef.snapshots(), // This will now listen to the correct document
         builder: (context, AsyncSnapshot<DocumentSnapshot> snapshot) {
           if (snapshot.hasError) {
             return const Center(child: Text("Something went wrong."));

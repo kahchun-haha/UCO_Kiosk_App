@@ -22,7 +22,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
 
   Query _buildQuery(String uid) {
     final coll = FirebaseFirestore.instance.collection('deposits');
-    
+
     // STANDARD: Querying by the standard 'timestamp' field.
     return coll
         .where('userId', isEqualTo: uid)
@@ -60,16 +60,27 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
+        backgroundColor: const Color(0xFFF8F9FA),
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(
+            Icons.arrow_back_ios_new_rounded,
+            color: Color(0xFF1F2937),
+            size: 20,
+          ),
+          onPressed: () => Navigator.pop(context),
+        ),
         title: const Text(
           'Recycling History',
           style: TextStyle(
-            fontSize: 20,
+            color: Color(0xFF1F2937),
             fontWeight: FontWeight.w700,
-            color: Colors.white,
+            fontSize: 20,
           ),
         ),
-        backgroundColor: const Color(0xFF2E3440),
       ),
+
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -98,7 +109,8 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                       child: Text('All'),
                     ),
                   ],
-                  onChanged: (v) => setState(() => _filter = v ?? HistoryFilter.all),
+                  onChanged:
+                      (v) => setState(() => _filter = v ?? HistoryFilter.all),
                 ),
                 const Spacer(),
                 IconButton(
@@ -125,40 +137,51 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                 stream: query.snapshots(),
                 builder: (context, snap) {
                   if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: Color(0xFF88C999)));
+                    return const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF88C999),
+                      ),
+                    );
                   }
                   if (snap.hasError) {
                     return const Center(child: Text('Something went wrong.'));
                   }
-                  
+
                   final docs = snap.data?.docs ?? [];
-                  
+
                   // OPTIONAL: Client-side filtering logic
                   // Since we removed complex server queries, we filter the list here if needed.
-                  final filteredDocs = docs.where((doc) {
-                    if (_filter == HistoryFilter.all) return true;
-                    
-                    final d = doc.data() as Map<String, dynamic>;
-                    if (d['timestamp'] == null) return false;
-                    
-                    final date = (d['timestamp'] as Timestamp).toDate();
-                    final now = DateTime.now();
-                    
-                    if (_filter == HistoryFilter.thisMonth) {
-                      return date.year == now.year && date.month == now.month;
-                    } else if (_filter == HistoryFilter.lastMonth) {
-                      final lastMonth = DateTime(now.year, now.month - 1);
-                      return date.year == lastMonth.year && date.month == lastMonth.month;
-                    }
-                    return true;
-                  }).toList();
+                  final filteredDocs =
+                      docs.where((doc) {
+                        if (_filter == HistoryFilter.all) return true;
+
+                        final d = doc.data() as Map<String, dynamic>;
+                        if (d['timestamp'] == null) return false;
+
+                        final date = (d['timestamp'] as Timestamp).toDate();
+                        final now = DateTime.now();
+
+                        if (_filter == HistoryFilter.thisMonth) {
+                          return date.year == now.year &&
+                              date.month == now.month;
+                        } else if (_filter == HistoryFilter.lastMonth) {
+                          final lastMonth = DateTime(now.year, now.month - 1);
+                          return date.year == lastMonth.year &&
+                              date.month == lastMonth.month;
+                        }
+                        return true;
+                      }).toList();
 
                   if (filteredDocs.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.history_rounded, size: 64, color: Color(0xFF9CA3AF)),
+                          const Icon(
+                            Icons.history_rounded,
+                            size: 64,
+                            color: Color(0xFF9CA3AF),
+                          ),
                           const SizedBox(height: 12),
                           const Text(
                             'No recycling activity found.',
@@ -172,38 +195,43 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                   // Calculate Totals
                   double total = 0;
                   int totalPoints = 0;
-                  
-                  final items = filteredDocs.map((doc) {
-                    final d = doc.data() as Map<String, dynamic>;
-                    
-                    final weight = (d['weight'] is int)
-                        ? (d['weight'] as int).toDouble()
-                        : (d['weight'] ?? 0.0);
-                    
-                    int points;
-                    if (d.containsKey('points')) {
-                      final p = d['points'];
-                      points = (p is int)
-                          ? p
-                          : (p is double ? p.round() : int.tryParse(p.toString()) ?? 0);
-                    } else {
-                      points = _computePointsFromWeight(weight);
-                    }
 
-                    // STANDARD: Direct timestamp usage
-                    final ts = d['timestamp'] as Timestamp?;
+                  final items =
+                      filteredDocs.map((doc) {
+                        final d = doc.data() as Map<String, dynamic>;
 
-                    total += weight;
-                    totalPoints += points;
+                        final weight =
+                            (d['weight'] is int)
+                                ? (d['weight'] as int).toDouble()
+                                : (d['weight'] ?? 0.0);
 
-                    return {
-                      'id': doc.id,
-                      'kioskId': d['kioskId'] ?? 'Unknown',
-                      'weight': weight,
-                      'timestamp': ts,
-                      'points': points,
-                    };
-                  }).toList();
+                        int points;
+                        if (d.containsKey('points')) {
+                          final p = d['points'];
+                          points =
+                              (p is int)
+                                  ? p
+                                  : (p is double
+                                      ? p.round()
+                                      : int.tryParse(p.toString()) ?? 0);
+                        } else {
+                          points = _computePointsFromWeight(weight);
+                        }
+
+                        // STANDARD: Direct timestamp usage
+                        final ts = d['timestamp'] as Timestamp?;
+
+                        total += weight;
+                        totalPoints += points;
+
+                        return {
+                          'id': doc.id,
+                          'kioskId': d['kioskId'] ?? 'Unknown',
+                          'weight': weight,
+                          'timestamp': ts,
+                          'points': points,
+                        };
+                      }).toList();
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,11 +250,17 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                const Text('Total Recycled', style: TextStyle(color: Color(0xFFD8DEE9))),
+                                const Text(
+                                  'Total Recycled',
+                                  style: TextStyle(color: Color(0xFFD8DEE9)),
+                                ),
                                 const SizedBox(height: 6),
                                 Text(
                                   '${(total / 1000).toStringAsFixed(3)} kg',
-                                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ],
                             ),
@@ -234,11 +268,17 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
-                                const Text('Points', style: TextStyle(color: Color(0xFFD8DEE9))),
+                                const Text(
+                                  'Points',
+                                  style: TextStyle(color: Color(0xFFD8DEE9)),
+                                ),
                                 const SizedBox(height: 6),
                                 Text(
                                   '$totalPoints pts',
-                                  style: const TextStyle(color: Color(0xFF88C999), fontWeight: FontWeight.w700),
+                                  style: const TextStyle(
+                                    color: Color(0xFF88C999),
+                                    fontWeight: FontWeight.w700,
+                                  ),
                                 ),
                               ],
                             ),
@@ -246,12 +286,13 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      
+
                       // List
                       Expanded(
                         child: ListView.separated(
                           itemCount: items.length,
-                          separatorBuilder: (_, __) => const SizedBox(height: 12),
+                          separatorBuilder:
+                              (_, __) => const SizedBox(height: 12),
                           itemBuilder: (context, i) {
                             final it = items[i];
                             return InkWell(
@@ -259,7 +300,10 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (_) => DepositDetailScreen(depositId: it['id'] as String),
+                                    builder:
+                                        (_) => DepositDetailScreen(
+                                          depositId: it['id'] as String,
+                                        ),
                                   ),
                                 );
                               },
@@ -284,49 +328,79 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                         color: const Color(0xFFF1F5F9),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
-                                      child: const Icon(Icons.inbox_rounded, color: Color(0xFF88C999)),
+                                      child: const Icon(
+                                        Icons.inbox_rounded,
+                                        color: Color(0xFF88C999),
+                                      ),
                                     ),
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            _formatKgAndG(it['weight'] as double),
-                                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                                            _formatKgAndG(
+                                              it['weight'] as double,
+                                            ),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                              fontSize: 16,
+                                            ),
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
                                             'Kiosk: ${it['kioskId']}',
-                                            style: const TextStyle(color: Color(0xFF6B7280)),
+                                            style: const TextStyle(
+                                              color: Color(0xFF6B7280),
+                                            ),
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            _formatTimestamp(it['timestamp'] as Timestamp?),
-                                            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 12),
+                                            _formatTimestamp(
+                                              it['timestamp'] as Timestamp?,
+                                            ),
+                                            style: const TextStyle(
+                                              color: Color(0xFF9CA3AF),
+                                              fontSize: 12,
+                                            ),
                                           ),
                                         ],
                                       ),
                                     ),
                                     Column(
-                                      crossAxisAlignment: CrossAxisAlignment.end,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
                                       children: [
                                         Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 6,
+                                          ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(12),
+                                            borderRadius: BorderRadius.circular(
+                                              12,
+                                            ),
                                           ),
                                           child: Row(
                                             children: [
-                                              const Icon(Icons.stars_rounded, size: 14, color: Color(0xFF88C999)),
+                                              const Icon(
+                                                Icons.stars_rounded,
+                                                size: 14,
+                                                color: Color(0xFF88C999),
+                                              ),
                                               const SizedBox(width: 6),
                                               Text('+${it['points']}'),
                                             ],
                                           ),
                                         ),
                                         const SizedBox(height: 8),
-                                        const Icon(Icons.arrow_forward_ios_rounded, size: 14, color: Color(0xFF9CA3AF)),
+                                        const Icon(
+                                          Icons.arrow_forward_ios_rounded,
+                                          size: 14,
+                                          color: Color(0xFF9CA3AF),
+                                        ),
                                       ],
                                     ),
                                   ],
