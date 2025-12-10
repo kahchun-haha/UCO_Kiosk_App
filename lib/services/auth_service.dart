@@ -9,11 +9,8 @@ class AuthService {
   // Register new user
   Future<User?> registerUser(String email, String password) async {
     try {
-      UserCredential userCredential =
-          await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      UserCredential userCredential = await _auth
+          .createUserWithEmailAndPassword(email: email, password: password);
       User? user = userCredential.user;
       if (user != null) {
         await _firestore.collection('users').doc(user.uid).set({
@@ -37,8 +34,7 @@ class AuthService {
   // Sign in existing user
   Future<User?> signInUser(String email, String password) async {
     try {
-      UserCredential userCredential =
-          await _auth.signInWithEmailAndPassword(
+      UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
@@ -129,7 +125,9 @@ class AuthService {
 
   // Add recycling activity using SUBCOLLECTION (no array on user doc)
   Future<bool> addRecyclingActivity(
-      String uid, Map<String, dynamic> activity) async {
+    String uid,
+    Map<String, dynamic> activity,
+  ) async {
     try {
       final double amount = (activity['amount'] ?? 0).toDouble();
 
@@ -138,16 +136,14 @@ class AuthService {
           .collection('users')
           .doc(uid)
           .collection('recyclingHistory')
-          .add({
-        ...activity,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+          .add({...activity, 'timestamp': FieldValue.serverTimestamp()});
 
       // 2) Update aggregates on the user document
       await _firestore.collection('users').doc(uid).update({
         'totalRecycled': FieldValue.increment(amount),
-        'depositCount': FieldValue
-            .increment(1), // how many deposits this user has done
+        'depositCount': FieldValue.increment(
+          1,
+        ), // how many deposits this user has done
         'lastRecycling': FieldValue.serverTimestamp(),
       });
 
@@ -161,19 +157,15 @@ class AuthService {
   // Get user's recycling history from SUBCOLLECTION
   Future<List<Map<String, dynamic>>> getRecyclingHistory(String uid) async {
     try {
-      final snapshot = await _firestore
-          .collection('users')
-          .doc(uid)
-          .collection('recyclingHistory')
-          .orderBy('timestamp', descending: true)
-          .get();
+      final snapshot =
+          await _firestore
+              .collection('users')
+              .doc(uid)
+              .collection('recyclingHistory')
+              .orderBy('timestamp', descending: true)
+              .get();
 
-      return snapshot.docs
-          .map((doc) => {
-                ...doc.data(),
-                'id': doc.id,
-              })
-          .toList();
+      return snapshot.docs.map((doc) => {...doc.data(), 'id': doc.id}).toList();
     } catch (e) {
       print("Error getting recycling history: $e");
       return [];
@@ -182,7 +174,9 @@ class AuthService {
 
   // Add reward redemption to history (still using array, which is fine)
   Future<bool> addRewardRedemption(
-      String uid, Map<String, dynamic> reward) async {
+    String uid,
+    Map<String, dynamic> reward,
+  ) async {
     try {
       await _firestore.collection('users').doc(uid).update({
         'rewardHistory': FieldValue.arrayUnion([reward]),
@@ -211,7 +205,10 @@ class AuthService {
   }
 
   // Update user profile information
-  Future<bool> updateUserProfile(String uid, Map<String, dynamic> updates) async {
+  Future<bool> updateUserProfile(
+    String uid,
+    Map<String, dynamic> updates,
+  ) async {
     try {
       updates['lastUpdated'] = FieldValue.serverTimestamp();
       await _firestore.collection('users').doc(uid).update(updates);
@@ -243,8 +240,7 @@ class AuthService {
           'totalRecycled': userData['totalRecycled'] ?? 0,
           // use aggregate counter instead of array length
           'recyclingCount': userData['depositCount'] ?? 0,
-          'rewardCount':
-              (userData['rewardHistory'] as List?)?.length ?? 0,
+          'rewardCount': (userData['rewardHistory'] as List?)?.length ?? 0,
           'memberSince': userData['createdAt'],
           'lastActivity': userData['lastUpdated'],
         };
@@ -293,7 +289,9 @@ class AuthService {
 
   // Change user password
   Future<bool> changePassword(
-      String currentPassword, String newPassword) async {
+    String currentPassword,
+    String newPassword,
+  ) async {
     try {
       final user = _auth.currentUser;
       if (user != null && user.email != null) {
@@ -331,6 +329,23 @@ class AuthService {
         return 'Too many requests. Please try again later.';
       default:
         return 'An error occurred. Please try again.';
+    }
+  }
+
+  // Get current user's role from Firestore (user / agent / admin / superadmin)
+  Future<String?> getCurrentUserRole() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return null;
+
+      final data = await getUserDataAsMap(user.uid);
+      if (data == null) return null;
+
+      // default to "user" if role is missing
+      return (data['role'] as String?) ?? 'user';
+    } catch (e) {
+      print("Error getting user role: $e");
+      return null;
     }
   }
 }

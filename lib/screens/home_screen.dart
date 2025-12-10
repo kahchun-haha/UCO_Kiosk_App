@@ -5,6 +5,7 @@ import 'package:uco_kiosk_app/screens/profile_screen.dart';
 import 'package:uco_kiosk_app/screens/qr_display_screen.dart';
 import 'package:uco_kiosk_app/services/auth_service.dart';
 import 'package:uco_kiosk_app/screens/recycling_history_screen.dart';
+import 'package:uco_kiosk_app/screens/agent_tasks_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,6 +18,24 @@ class _HomeScreenState extends State<HomeScreen> {
   final AuthService _authService = AuthService();
   int _selectedIndex = 0;
 
+  String? _userRole;
+  bool _loadingRole = true;
+
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserRole();
+  }
+
+  Future<void> _loadUserRole() async {
+    final role = await _authService.getCurrentUserRole();
+    setState(() {
+      _userRole = role ?? 'user';
+      _loadingRole = false;
+    });
+  }
+
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
@@ -25,6 +44,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loadingRole) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF88C999)),
+        ),
+      );
+    }
+
+    // If this is an agent, show the agent home instead of user home
+    if (_userRole == 'agent') {
+      return const AgentTasksScreen();
+    }
+
+    // Default: normal user home (your existing UI)
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(

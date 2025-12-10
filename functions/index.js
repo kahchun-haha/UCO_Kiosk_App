@@ -38,9 +38,7 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       `KIOSK UPDATE → ${kioskId} | Before: ${before.fillLevel}% | After: ${after.fillLevel}%`
     );
 
-    // -------------------------------
-    // Detect kiosk emptied event
-    // -------------------------------
+    // Detect kiosk emptied (high → low)
     const wasFull = before.fillLevel >= FILL_LEVEL_THRESHOLD;
     const nowLow = after.fillLevel <= 10;
 
@@ -51,16 +49,14 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       });
     }
 
-    // -------------------------------
-    // Detect threshold crossing (create collection task)
-    // -------------------------------
+    // Detect threshold crossing (low → high)
     const crossedThreshold =
       before.fillLevel < FILL_LEVEL_THRESHOLD &&
       after.fillLevel >= FILL_LEVEL_THRESHOLD;
 
     if (!crossedThreshold) return null;
 
-    // Check existing pending tasks
+    // Prevent duplicate pending tasks
     const pendingTasks = await db
       .collection("collectionTasks")
       .where("kioskId", "==", kioskId)
@@ -88,8 +84,7 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
 );
 
 // ===============================================================
-//  FUNCTION 2: Award points + create USER history
-//              (deposits collection is the single source of truth)
+//  FUNCTION 2: Award points + user recycling history
 // ===============================================================
 exports.awardPointsOnDeposit = onDocumentCreated(
   {
@@ -105,23 +100,15 @@ exports.awardPointsOnDeposit = onDocumentCreated(
 
     if (!userId || !weightInGrams) return null;
 
-    // Logic: 1 point per 10g
     const pointsToAward = Math.floor(weightInGrams / 10);
     const userRef = db.collection("users").doc(userId);
 
-    // ------------------------------------------------
-    // 1. UPDATE USER AGGREGATES
-    // ------------------------------------------------
+    // Update aggregates
     try {
       await userRef.update({
         points: FieldValue.increment(pointsToAward),
-
-        // Store total recycled weight in grams
         totalRecycled: FieldValue.increment(weightInGrams),
-
-        // Count how many deposits this user has done
         depositCount: FieldValue.increment(1),
-
         lastDepositAt: FieldValue.serverTimestamp(),
       });
       console.log(`Updated aggregates for user ${userId}`);
@@ -129,9 +116,7 @@ exports.awardPointsOnDeposit = onDocumentCreated(
       console.error("Error updating user aggregates:", err);
     }
 
-    // ------------------------------------------------
-    // 2. Add to user recyclingHistory subcollection
-    // ------------------------------------------------
+    // Add history entry
     try {
       await db
         .collection("users")
@@ -143,13 +128,11 @@ exports.awardPointsOnDeposit = onDocumentCreated(
           weight: weightInGrams,
           timestamp: FieldValue.serverTimestamp(),
         });
+
       console.log(`Added recyclingHistory entry for user ${userId}`);
     } catch (err) {
-      console.error("Error writing to user recyclingHistory:", err);
+      console.error("Error writing to recyclingHistory:", err);
     }
-
-    // NOTE: We NO LONGER write to kiosks/{kioskId}/deposits.
-    // All deposit events live in the top-level `deposits` collection.
 
     return null;
   }
@@ -162,14 +145,12 @@ exports.createAdmin = onCall(async (request) => {
   const { email, password, name } = request.data;
 
   try {
-    // 1. Create user in Firebase Auth
     const userRecord = await getAuth().createUser({
       email,
       password,
       displayName: name,
     });
 
-    // 2. Create user profile in Firestore
     await db.collection("users").doc(userRecord.uid).set({
       email,
       name,
@@ -192,14 +173,12 @@ exports.createAgent = onCall(async (request) => {
   const { email, password, name, phone, staffId, region } = request.data;
 
   try {
-    // 1. Create user in Firebase Auth
     const userRecord = await getAuth().createUser({
       email,
       password,
       displayName: name,
     });
 
-    // 2. Create user profile in Firestore with AGENT specific fields
     await db.collection("users").doc(userRecord.uid).set({
       email,
       name,
@@ -209,7 +188,7 @@ exports.createAgent = onCall(async (request) => {
       region: region || "",
       createdAt: FieldValue.serverTimestamp(),
       active: true,
-      tasksCompleted: 0, // Initialize agent stats
+      tasksCompleted: 0,
     });
 
     return { success: true, message: "Agent created successfully." };
@@ -220,26 +199,18 @@ exports.createAgent = onCall(async (request) => {
 });
 
 // ===============================================================
-//  FUNCTION 5: Securely Delete User (Super Admin Only)
+//  FUNCTION 5: Securely Delete User
 // ===============================================================
 exports.deleteUser = onCall(async (request) => {
   const { targetUid } = request.data;
 
-  // Security Check: Ensure the caller is logged in
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "User must be logged in.");
   }
 
   try {
-    // 1. Remove from Firebase Authentication (prevent login)
     await getAuth().deleteUser(targetUid);
-
-    // 2. Remove from Firestore (clean up profile document)
     await db.collection("users").doc(targetUid).delete();
-
-    // NOTE: This does not delete subcollections like recyclingHistory.
-    // If you ever need full GDPR-style deletion, we can add a
-    // background function to recursively delete those as well.
 
     return { success: true, message: "User successfully deleted." };
   } catch (error) {
@@ -247,3 +218,84 @@ exports.deleteUser = onCall(async (request) => {
     throw new HttpsError("internal", error.message);
   }
 });
+
+// ===============================================================
+// FUNCTION 6: Auto-update kiosk + agent stats when task completed
+// ===============================================================
+exports.onCollectionTaskStatusChange = onDocumentUpdated(
+  {
+    document: "collectionTasks/{taskId}",
+    region: REGION,
+  },
+  async (event) => {
+    if (!event.data) return null;
+
+    const before = event.data.before.data();
+    const after = event.data.after.data();
+    const taskId = event.params.taskId;
+
+    // Only continue if status actually changed
+    if (before.status === after.status) return null;
+
+    // Only process when status becomes "completed"
+    if (after.status !== "completed") return null;
+
+    console.log(`Task ${taskId} marked completed.`);
+
+    const kioskId = after.kioskId;
+    const agentId = after.agentId;
+
+    const batch = db.batch();
+    const now = FieldValue.serverTimestamp();
+
+    // -----------------------------
+    // 1. Update KIOSK document
+    // -----------------------------
+    if (kioskId) {
+      const kioskRef = db.collection("kiosks").doc(kioskId);
+      batch.set(
+        kioskRef,
+        {
+          fillLevel: 0,
+          liquidHeight: 0,
+          lastCollectedAt: now,
+          lastUpdated: now,
+        },
+        { merge: true }
+      );
+    }
+
+    // -----------------------------
+    // 2. Update AGENT statistics
+    // -----------------------------
+    if (agentId) {
+      const agentRef = db.collection("users").doc(agentId);
+      batch.set(
+        agentRef,
+        {
+          tasksCompleted: FieldValue.increment(1),
+          lastTaskCompletedAt: now,
+        },
+        { merge: true }
+      );
+    }
+
+    // -----------------------------
+    // 3. Create a collection log entry
+    // -----------------------------
+    const logRef = db.collection("collectionLogs").doc();
+    batch.set(logRef, {
+      taskId,
+      kioskId: kioskId || null,
+      agentId: agentId || null,
+      completedAt: now,
+      fillLevelAtCreation: after.fillLevelAtCreation || null,
+      proofPhotoUrl: after.proofPhotoUrl || null,
+    });
+
+    await batch.commit();
+    console.log(`Post-processing for task ${taskId} completed.`);
+
+    return null;
+  }
+);
