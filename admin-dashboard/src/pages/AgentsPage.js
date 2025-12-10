@@ -11,8 +11,8 @@ export default function AgentsPage() {
   // Listen to real-time updates for Agents only
   useEffect(() => {
     const q = query(
-      collection(db, 'users'), 
-      where('role', '==', 'agent'), 
+      collection(db, 'users'),
+      where('role', '==', 'agent'),
       orderBy('createdAt', 'desc')
     );
     const unsub = onSnapshot(q, (snap) => {
@@ -81,11 +81,11 @@ export default function AgentsPage() {
       {/* HEADER */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-text-main">Agents Management</h2>
-          <p className="text-text-sub text-sm">Manage your field collection team</p>
+          <h2 className="text-3xl font-bold text-text-main mb-1">Agents Management</h2>
+          <p className="text-text-sub text-sm mt-2">Manage your field collection team</p>
         </div>
-        <button 
-          onClick={() => setShowAdd(true)} 
+        <button
+          onClick={() => setShowAdd(true)}
           className="bg-dark text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-dark-light shadow-lg shadow-dark/20 transition-all flex items-center gap-2"
         >
           <span>+</span> Add Agent

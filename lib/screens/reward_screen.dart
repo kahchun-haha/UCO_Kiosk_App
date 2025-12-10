@@ -2,6 +2,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:uco_kiosk_app/screens/redemption_history_screen.dart'; 
 
 class RewardScreen extends StatelessWidget {
   const RewardScreen({super.key});
@@ -43,25 +44,48 @@ class RewardScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA), // Matches Profile background
-      appBar: AppBar(
-        title: const Text(
-          "Rewards Store",
-          style: TextStyle(
-            color: Color(0xFF1F2937),
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        centerTitle: true,
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(
-            Icons.arrow_back_ios_new_rounded,
-            color: Color(0xFF1F2937),
-          ),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+appBar: AppBar(
+  title: const Text(
+    "Rewards Store",
+    style: TextStyle(
+      color: Color(0xFF1F2937),
+      fontWeight: FontWeight.w700,
+    ),
+  ),
+  centerTitle: true,
+  backgroundColor: Colors.transparent,
+  elevation: 0,
+
+  // Left Back Button
+  leading: IconButton(
+    icon: const Icon(
+      Icons.arrow_back_ios_new_rounded,
+      color: Color(0xFF1F2937),
+    ),
+    onPressed: () => Navigator.of(context).pop(),
+  ),
+
+  // ⭐ RIGHT SIDE HISTORY BUTTON ⭐
+  actions: [
+    IconButton(
+      icon: const Icon(
+        Icons.receipt_long_rounded,
+        color: Color(0xFF1F2937),
       ),
+      tooltip: "Redemption History",
+      onPressed: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const RedemptionHistoryScreen(),
+          ),
+        );
+      },
+    ),
+    const SizedBox(width: 16),
+  ],
+),
+
       body: StreamBuilder<DocumentSnapshot>(
         stream:
             FirebaseFirestore.instance

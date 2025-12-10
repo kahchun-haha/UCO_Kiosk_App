@@ -6,7 +6,7 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'collection_tasks'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'collectionTasks'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setTasks(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     });
@@ -16,7 +16,7 @@ export default function TasksPage() {
   const markComplete = async (t) => {
     if (!window.confirm('Mark task completed?')) return;
     try {
-      await updateDoc(doc(db, 'collection_tasks', t.id), { status: 'completed', completedAt: new Date() });
+      await updateDoc(doc(db, 'collectionTasks', t.id), { status: 'completed', completedAt: new Date() });
     } catch (e) {
       console.error(e);
       alert('Failed to update.');
@@ -25,7 +25,7 @@ export default function TasksPage() {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-text-main mb-6">Collection Tasks</h2>
+      <h2 className="text-3xl font-bold text-text-main mb-6">Collection Tasks</h2>
       
       <div className="flex flex-col gap-4">
         {tasks.map(t => {

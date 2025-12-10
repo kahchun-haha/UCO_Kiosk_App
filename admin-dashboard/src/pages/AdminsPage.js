@@ -49,8 +49,8 @@ export default function AdminsPage() {
     <div>
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h2 className="text-2xl font-bold text-text-main">Admin Access</h2>
-          <p className="text-text-sub text-sm">Manage system administrators</p>
+          <h2 className="text-3xl font-bold text-text-main mb-1">Admin Access</h2>
+          <p className="text-text-sub text-sm mt-2">Manage system administrators</p>
         </div>
         <button 
           onClick={() => setShowAdd(true)} 

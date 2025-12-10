@@ -1,5 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  Navigate,
+} from 'react-router-dom';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, getDocs, collection, query, where } from 'firebase/firestore';
 import { auth, db } from './firebase';
@@ -10,37 +15,42 @@ import AgentsPage from './pages/AgentsPage';
 import AdminsPage from './pages/AdminsPage';
 import KiosksPage from './pages/KiosksPage';
 import TasksPage from './pages/TasksPage';
+import DepositsPage from './pages/DepositsPage';
+import AnalyticsPage from './pages/AnalyticsPage';
 import Login from './pages/Login';
 import SetupSuperAdmin from './pages/SetupSuperAdmin';
 
-function App(){
+function App() {
   const [user, setUser] = useState(null);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [hasSuperAdmin, setHasSuperAdmin] = useState(null);
 
-  useEffect(()=>{
-    (async ()=>{
+  useEffect(() => {
+    (async () => {
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'superadmin'));
+        const q = query(
+          collection(db, 'users'),
+          where('role', '==', 'superadmin')
+        );
         const snaps = await getDocs(q);
         setHasSuperAdmin(!snaps.empty);
-      } catch(e) {
+      } catch (e) {
         console.error('Error checking superadmin', e);
         setHasSuperAdmin(true);
       }
     })();
-  },[]);
+  }, []);
 
-  useEffect(()=>{
-    const unsub = onAuthStateChanged(auth, async (u)=>{
-      if(u){
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      if (u) {
         setUser(u);
-        try{
+        try {
           const snap = await getDoc(doc(db, 'users', u.uid));
-          if(snap.exists()) setUserData(snap.data());
+          if (snap.exists()) setUserData(snap.data());
           else setUserData({ role: 'user' });
-        }catch(e){
+        } catch (e) {
           console.error('fetch user doc', e);
           setUserData({ role: 'user' });
         }
@@ -51,34 +61,58 @@ function App(){
       setLoading(false);
     });
     return () => unsub();
-  },[]);
+  }, []);
 
-  if(loading || hasSuperAdmin === null) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading || hasSuperAdmin === null)
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        Loading...
+      </div>
+    );
 
   // If no superadmin exists, show setup page (one-time)
-  if(!hasSuperAdmin){
-    return <SetupSuperAdmin onCreated={()=>setHasSuperAdmin(true)} />;
+  if (!hasSuperAdmin) {
+    return <SetupSuperAdmin onCreated={() => setHasSuperAdmin(true)} />;
   }
 
-  if(!user) return <Login />;
+  if (!user) return <Login />;
 
   const role = userData?.role || 'user';
 
-return (
+  return (
     <Router>
-      <div className="flex min-h-screen bg-background font-sans"> {/* Applied mobile font/bg */}
-        <Sidebar role={role} onLogout={()=>signOut(auth)} />
-        
+      <div className="flex min-h-screen bg-background font-sans">
+        <Sidebar role={role} onLogout={() => signOut(auth)} />
+
         {/* Main Content Area */}
         <main className="flex-1 p-8 overflow-y-auto h-screen">
           <div className="max-w-7xl mx-auto">
             <Routes>
-              {/* ... your existing routes ... */}
               <Route path="/" element={<DashboardHome />} />
               <Route path="/users" element={<UsersPage />} />
-              <Route path="/agents" element={(role === 'admin' || role === 'superadmin') ? <AgentsPage /> : <Navigate to="/" />} />
-              <Route path="/admins" element={(role === 'superadmin') ? <AdminsPage /> : <Navigate to="/" />} />
+              <Route
+                path="/agents"
+                element={
+                  role === 'admin' || role === 'superadmin' ? (
+                    <AgentsPage />
+                  ) : (
+                    <Navigate to="/" />
+                  )
+                }
+              />
+              <Route
+                path="/admins"
+                element={
+                  role === 'superadmin' ? (
+                    <AdminsPage />
+                  ) : (
+                    <Navigate to="/" />
+                  )
+                }
+              />
               <Route path="/kiosks" element={<KiosksPage />} />
+              <Route path="/deposits" element={<DepositsPage />} />
+              <Route path="/analytics" element={<AnalyticsPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>

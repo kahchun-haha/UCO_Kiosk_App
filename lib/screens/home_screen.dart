@@ -117,13 +117,25 @@ class _HomeScreenState extends State<HomeScreen> {
                     'Hello,',
                     style: TextStyle(fontSize: 16, color: Color(0xFF9CA3AF)),
                   ),
-                  Text(
-                    userEmail.split('@')[0],
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
-                    ),
+
+                  // 🔥 Capitalized username
+                  Builder(
+                    builder: (context) {
+                      final rawName = userEmail.split('@')[0];
+                      final displayName =
+                          rawName.isNotEmpty
+                              ? rawName[0].toUpperCase() + rawName.substring(1)
+                              : rawName;
+
+                      return Text(
+                        displayName,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF1F2937),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

@@ -1,6 +1,6 @@
 const {
   onDocumentUpdated,
-  onDocumentCreated
+  onDocumentCreated,
 } = require("firebase-functions/v2/firestore");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
@@ -61,9 +61,8 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
     if (!crossedThreshold) return null;
 
     // Check existing pending tasks
-    // FIXED: Used 'collection_tasks' to match your Firestore Screenshot
     const pendingTasks = await db
-      .collection("collection_tasks") 
+      .collection("collectionTasks")
       .where("kioskId", "==", kioskId)
       .where("status", "==", "pending")
       .get();
@@ -75,8 +74,7 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
 
     console.log(`Creating NEW collection task for kiosk ${kioskId}.`);
 
-    // FIXED: Used 'collection_tasks' to match your Firestore Screenshot
-    return db.collection("collection_tasks").add({
+    return db.collection("collectionTasks").add({
       kioskId,
       kioskName: after.name || "Unnamed Kiosk",
       status: "pending",
@@ -90,7 +88,8 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
 );
 
 // ===============================================================
-//  FUNCTION 2: Award points + create user & kiosk history
+//  FUNCTION 2: Award points + create USER history
+//              (deposits collection is the single source of truth)
 // ===============================================================
 exports.awardPointsOnDeposit = onDocumentCreated(
   {
@@ -111,23 +110,23 @@ exports.awardPointsOnDeposit = onDocumentCreated(
     const userRef = db.collection("users").doc(userId);
 
     // ------------------------------------------------
-    // 1. UPDATE USER AGGREGATES (The Professional Fix)
+    // 1. UPDATE USER AGGREGATES
     // ------------------------------------------------
     try {
       await userRef.update({
         points: FieldValue.increment(pointsToAward),
-        
-        // Matches 'totalRecycled' in your DB. We divide by 1000 in frontend to get Liters/Kg.
-        totalRecycled: FieldValue.increment(weightInGrams), 
-        
-        // NEW: Explicitly count the deposit
-        depositCount: FieldValue.increment(1), 
-        
+
+        // Store total recycled weight in grams
+        totalRecycled: FieldValue.increment(weightInGrams),
+
+        // Count how many deposits this user has done
+        depositCount: FieldValue.increment(1),
+
         lastDepositAt: FieldValue.serverTimestamp(),
       });
       console.log(`Updated aggregates for user ${userId}`);
     } catch (err) {
-      console.error(`Error updating user:`, err);
+      console.error("Error updating user aggregates:", err);
     }
 
     // ------------------------------------------------
@@ -144,28 +143,13 @@ exports.awardPointsOnDeposit = onDocumentCreated(
           weight: weightInGrams,
           timestamp: FieldValue.serverTimestamp(),
         });
+      console.log(`Added recyclingHistory entry for user ${userId}`);
     } catch (err) {
       console.error("Error writing to user recyclingHistory:", err);
     }
 
-    // ------------------------------------------------
-    // 3. Add to kiosk deposit history
-    // ------------------------------------------------
-    try {
-      if (deposit.kioskId) {
-        await db
-          .collection("kiosks")
-          .doc(deposit.kioskId)
-          .collection("deposits")
-          .add({
-            userId,
-            weight: weightInGrams,
-            timestamp: FieldValue.serverTimestamp(),
-          });
-      }
-    } catch (err) {
-      console.error("Error writing to kiosk deposits:", err);
-    }
+    // NOTE: We NO LONGER write to kiosks/{kioskId}/deposits.
+    // All deposit events live in the top-level `deposits` collection.
 
     return null;
   }
@@ -191,7 +175,7 @@ exports.createAdmin = onCall(async (request) => {
       name,
       role: "admin",
       createdAt: FieldValue.serverTimestamp(),
-      active: true
+      active: true,
     });
 
     return { success: true, message: "Admin created successfully." };
@@ -205,7 +189,6 @@ exports.createAdmin = onCall(async (request) => {
 //  FUNCTION 4: Securely Create Agent
 // ===============================================================
 exports.createAgent = onCall(async (request) => {
-  // Agents have extra fields like phone, staffId, region
   const { email, password, name, phone, staffId, region } = request.data;
 
   try {
@@ -226,8 +209,7 @@ exports.createAgent = onCall(async (request) => {
       region: region || "",
       createdAt: FieldValue.serverTimestamp(),
       active: true,
-      // Initialize agent stats
-      tasksCompleted: 0 
+      tasksCompleted: 0, // Initialize agent stats
     });
 
     return { success: true, message: "Agent created successfully." };
@@ -249,11 +231,15 @@ exports.deleteUser = onCall(async (request) => {
   }
 
   try {
-    // 1. Remove from Firebase Authentication (Prevent login)
+    // 1. Remove from Firebase Authentication (prevent login)
     await getAuth().deleteUser(targetUid);
 
-    // 2. Remove from Firestore (Clean up data)
+    // 2. Remove from Firestore (clean up profile document)
     await db.collection("users").doc(targetUid).delete();
+
+    // NOTE: This does not delete subcollections like recyclingHistory.
+    // If you ever need full GDPR-style deletion, we can add a
+    // background function to recursively delete those as well.
 
     return { success: true, message: "User successfully deleted." };
   } catch (error) {

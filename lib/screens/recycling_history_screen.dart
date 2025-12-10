@@ -80,7 +80,6 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
           ),
         ),
       ),
-
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -149,41 +148,38 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
 
                   final docs = snap.data?.docs ?? [];
 
-                  // OPTIONAL: Client-side filtering logic
-                  // Since we removed complex server queries, we filter the list here if needed.
-                  final filteredDocs =
-                      docs.where((doc) {
-                        if (_filter == HistoryFilter.all) return true;
+                  // Client-side filtering for month
+                  final filteredDocs = docs.where((doc) {
+                    if (_filter == HistoryFilter.all) return true;
 
-                        final d = doc.data() as Map<String, dynamic>;
-                        if (d['timestamp'] == null) return false;
+                    final d = doc.data() as Map<String, dynamic>;
+                    if (d['timestamp'] == null) return false;
 
-                        final date = (d['timestamp'] as Timestamp).toDate();
-                        final now = DateTime.now();
+                    final date = (d['timestamp'] as Timestamp).toDate();
+                    final now = DateTime.now();
 
-                        if (_filter == HistoryFilter.thisMonth) {
-                          return date.year == now.year &&
-                              date.month == now.month;
-                        } else if (_filter == HistoryFilter.lastMonth) {
-                          final lastMonth = DateTime(now.year, now.month - 1);
-                          return date.year == lastMonth.year &&
-                              date.month == lastMonth.month;
-                        }
-                        return true;
-                      }).toList();
+                    if (_filter == HistoryFilter.thisMonth) {
+                      return date.year == now.year && date.month == now.month;
+                    } else if (_filter == HistoryFilter.lastMonth) {
+                      final lastMonth = DateTime(now.year, now.month - 1);
+                      return date.year == lastMonth.year &&
+                          date.month == lastMonth.month;
+                    }
+                    return true;
+                  }).toList();
 
                   if (filteredDocs.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
+                        children: const [
+                          Icon(
                             Icons.history_rounded,
                             size: 64,
                             color: Color(0xFF9CA3AF),
                           ),
-                          const SizedBox(height: 12),
-                          const Text(
+                          SizedBox(height: 12),
+                          Text(
                             'No recycling activity found.',
                             style: TextStyle(color: Color(0xFF6B7280)),
                           ),
@@ -196,42 +192,50 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                   double total = 0;
                   int totalPoints = 0;
 
-                  final items =
-                      filteredDocs.map((doc) {
-                        final d = doc.data() as Map<String, dynamic>;
+                  final items = filteredDocs.map((doc) {
+                    final d = doc.data() as Map<String, dynamic>;
 
-                        final weight =
-                            (d['weight'] is int)
-                                ? (d['weight'] as int).toDouble()
-                                : (d['weight'] ?? 0.0);
+                    final weight = (d['weight'] is int)
+                        ? (d['weight'] as int).toDouble()
+                        : (d['weight'] ?? 0.0);
 
-                        int points;
-                        if (d.containsKey('points')) {
-                          final p = d['points'];
-                          points =
-                              (p is int)
-                                  ? p
-                                  : (p is double
-                                      ? p.round()
-                                      : int.tryParse(p.toString()) ?? 0);
-                        } else {
-                          points = _computePointsFromWeight(weight);
-                        }
+                    int points;
+                    if (d.containsKey('points')) {
+                      final p = d['points'];
+                      points = (p is int)
+                          ? p
+                          : (p is double
+                              ? p.round()
+                              : int.tryParse(p.toString()) ?? 0);
+                    } else {
+                      points = _computePointsFromWeight(weight);
+                    }
 
-                        // STANDARD: Direct timestamp usage
-                        final ts = d['timestamp'] as Timestamp?;
+                    // STANDARD: Direct timestamp usage
+                    final ts = d['timestamp'] as Timestamp?;
 
-                        total += weight;
-                        totalPoints += points;
+                    total += weight;
+                    totalPoints += points;
 
-                        return {
-                          'id': doc.id,
-                          'kioskId': d['kioskId'] ?? 'Unknown',
-                          'weight': weight,
-                          'timestamp': ts,
-                          'points': points,
-                        };
-                      }).toList();
+                    // NEW: Read kioskName, fallback to kioskId, then fallback text
+                    final kioskNameRaw = d['kioskName'];
+                    final kioskIdRaw = d['kioskId'];
+
+                    final kioskName =
+                        (kioskNameRaw != null && kioskNameRaw.toString().trim().isNotEmpty)
+                            ? kioskNameRaw.toString()
+                            : (kioskIdRaw != null && kioskIdRaw.toString().trim().isNotEmpty)
+                                ? kioskIdRaw.toString()
+                                : 'Unknown kiosk';
+
+                    return {
+                      'id': doc.id,
+                      'kioskName': kioskName,
+                      'weight': weight,
+                      'timestamp': ts,
+                      'points': points,
+                    };
+                  }).toList();
 
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,7 +273,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 const Text(
-                                  'Points',
+                                  'Points Earned',
                                   style: TextStyle(color: Color(0xFFD8DEE9)),
                                 ),
                                 const SizedBox(height: 6),
@@ -291,8 +295,8 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                       Expanded(
                         child: ListView.separated(
                           itemCount: items.length,
-                          separatorBuilder:
-                              (_, __) => const SizedBox(height: 12),
+                          separatorBuilder: (_, __) =>
+                              const SizedBox(height: 12),
                           itemBuilder: (context, i) {
                             final it = items[i];
                             return InkWell(
@@ -300,10 +304,9 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder:
-                                        (_) => DepositDetailScreen(
-                                          depositId: it['id'] as String,
-                                        ),
+                                    builder: (_) => DepositDetailScreen(
+                                      depositId: it['id'] as String,
+                                    ),
                                   ),
                                 );
                               },
@@ -322,15 +325,16 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                 ),
                                 child: Row(
                                   children: [
+                                    // NEW: nicer icon for recycling
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFF1F5F9),
+                                        color: const Color(0xFFEFFAF3),
                                         borderRadius: BorderRadius.circular(8),
                                       ),
                                       child: const Icon(
-                                        Icons.inbox_rounded,
-                                        color: Color(0xFF88C999),
+                                        Icons.recycling_rounded,
+                                        color: Color(0xFF16A34A),
                                       ),
                                     ),
                                     const SizedBox(width: 12),
@@ -349,10 +353,12 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                             ),
                                           ),
                                           const SizedBox(height: 4),
+                                          // NEW: kiosk name only, no "Kiosk:" prefix
                                           Text(
-                                            'Kiosk: ${it['kioskId']}',
+                                            it['kioskName'] as String,
                                             style: const TextStyle(
                                               color: Color(0xFF6B7280),
+                                              fontSize: 13,
                                             ),
                                           ),
                                           const SizedBox(height: 4),
@@ -379,9 +385,8 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFF1F5F9),
-                                            borderRadius: BorderRadius.circular(
-                                              12,
-                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(12),
                                           ),
                                           child: Row(
                                             children: [

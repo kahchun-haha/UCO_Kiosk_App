@@ -6,6 +6,8 @@ import 'package:uco_kiosk_app/screens/recycling_history_screen.dart'; // Added f
 import 'package:uco_kiosk_app/screens/help_support_screen.dart';
 import 'package:uco_kiosk_app/screens/about_screen.dart';
 import 'package:uco_kiosk_app/screens/settings_screen.dart';
+import 'package:uco_kiosk_app/screens/partners_screen.dart'; 
+import 'package:uco_kiosk_app/screens/environmental_impact_screen.dart'; 
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -285,10 +287,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     title: 'Environmental Impact',
                     subtitle: 'See your contribution to the environment',
                     onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Impact tracker coming soon!'),
-                          backgroundColor: Color(0xFF88C999),
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const EnvironmentalImpactScreen(),
                         ),
                       );
                     },
@@ -323,6 +325,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     },
                   ),
 
+                  const SizedBox(height: 12),
+
+                  _buildMenuItem(
+                    icon: Icons.factory_rounded,
+                    title: 'Recycling Partners',
+                    subtitle: 'View our biodiesel & soap partners',
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PartnersScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  
                   const SizedBox(height: 12),
 
                   _buildMenuItem(

@@ -30,8 +30,8 @@ export default function KiosksPage() {
   return (
     <div>
       <div className="mb-6">
-        <h2 className="text-2xl font-bold text-text-main">Kiosk Status</h2>
-        <p className="text-text-sub text-sm">Live monitoring of oil levels</p>
+        <h2 className="text-3xl font-bold text-text-main mb-1">Kiosk Status</h2>
+        <p className="text-text-sub text-sm mt-2">Live monitoring of oil levels</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
