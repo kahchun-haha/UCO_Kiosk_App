@@ -484,7 +484,7 @@ appBar: AppBar(
     }
   }
 
-  Future<void> _processRedemption(
+Future<void> _processRedemption(
     BuildContext context,
     String uid,
     int currentPoints,
@@ -492,66 +492,51 @@ appBar: AppBar(
     String itemName,
   ) async {
     try {
-      // 1. Update Firebase
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      // 1. DEDUCT POINTS (Existing Logic)
+      final batch = FirebaseFirestore.instance.batch();
+      
+      final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
+      batch.update(userRef, {
         'points': currentPoints - cost,
       });
 
+      // 2. CREATE UNLOCK COMMAND (New Logic)
+      // Make sure this ID matches exactly what is in your ESP32 config
+      String kioskId = "kiosk-fsktm-01";
+
+      final commandRef = FirebaseFirestore.instance
+          .collection('kiosks')
+          .doc(kioskId)
+          .collection('commands') // Sub-collection for commands
+          .doc(); // Auto-generate ID
+
+      batch.set(commandRef, {
+        'type': 'unlock_reward',
+        'item': itemName,
+        'status': 'pending', // ESP32 looks for "pending"
+        'userId': uid,
+        'timestamp': FieldValue.serverTimestamp(),
+      });
+
+      // Commit both operations together
+      await batch.commit();
+
       if (!context.mounted) return;
 
-      // 2. Show Success Dialog
+      // 3. Show Success Dialog (Existing Logic)
       showDialog(
         context: context,
         builder:
             (_) => AlertDialog(
               backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
+              // ... (Your existing dialog code) ...
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(
-                    Icons.check_circle_rounded,
-                    color: Color(0xFF88C999),
-                    size: 60,
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Redemption Successful!",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF1F2937),
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    "You have redeemed $itemName.\nPlease collect it from the kiosk.",
-                    style: const TextStyle(color: Color(0xFF6B7280)),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF88C999),
-                        foregroundColor: Colors.white,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: const Text(
-                        "Done",
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                    ),
-                  ),
+                   const Icon(Icons.lock_open_rounded, color: Colors.green, size: 50),
+                   const SizedBox(height: 10),
+                   Text("Unlocking for $itemName..."),
+                   // ...
                 ],
               ),
             ),
