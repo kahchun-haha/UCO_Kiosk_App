@@ -15,7 +15,6 @@ class AuthService {
       if (user != null) {
         await _firestore.collection('users').doc(user.uid).set({
           'email': email,
-          'qrCode': generateUniqueQrCode(user.uid),
           'points': 150,
           'createdAt': FieldValue.serverTimestamp(),
           'totalRecycled': 0,
@@ -57,11 +56,6 @@ class AuthService {
     } catch (e) {
       print("Error signing out user: $e");
     }
-  }
-
-  // Generate unique QR code for user
-  String generateUniqueQrCode(String userId) {
-    return userId;
   }
 
   // Get user document from Firestore

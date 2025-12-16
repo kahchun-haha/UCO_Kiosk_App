@@ -14,20 +14,14 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-export const functions = getFunctions(app);
 
-export const createAgentCallable = (data) => {
-  const fn = httpsCallable(functions, 'createAgent');
-  return fn(data);
-};
-export const createAdminCallable = (data) => {
-  const fn = httpsCallable(functions, 'createAdmin');
-  return fn(data);
-};
+// ✅ FIX: explicitly set functions region
+export const functions = getFunctions(app, "asia-southeast1");
 
-export const deleteUserCallable = (data) => {
-  const fn = httpsCallable(functions, 'deleteUser');
-  return fn(data);
-};
+// ---- Callables ----
+export const createAgentCallable = httpsCallable(functions, 'createAgent');
+export const createAdminCallable = httpsCallable(functions, 'createAdmin');
+export const deleteUserCallable = httpsCallable(functions, 'deleteUser');

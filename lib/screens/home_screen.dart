@@ -1,11 +1,16 @@
+import 'dart:async'; // ✅ NEW
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:uco_kiosk_app/screens/agent_home_screen.dart';
 import 'package:uco_kiosk_app/screens/kiosk_list_screen.dart';
 import 'package:uco_kiosk_app/screens/profile_screen.dart';
 import 'package:uco_kiosk_app/screens/qr_display_screen.dart';
 import 'package:uco_kiosk_app/services/auth_service.dart';
 import 'package:uco_kiosk_app/screens/recycling_history_screen.dart';
-import 'package:uco_kiosk_app/screens/agent_tasks_screen.dart';
+
+// ✅ NEW
+import 'package:uco_kiosk_app/services/notification_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +26,10 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _userRole;
   bool _loadingRole = true;
 
+  // ✅ NEW: points notification listener
+  StreamSubscription<DocumentSnapshot>? _userDocSub;
+  bool _pointsListenerPrimed = false;
+  int? _lastPoints;
 
   @override
   void initState() {
@@ -28,11 +37,58 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUserRole();
   }
 
+  @override
+  void dispose() {
+    _userDocSub?.cancel();
+    super.dispose();
+  }
+
   Future<void> _loadUserRole() async {
     final role = await _authService.getCurrentUserRole();
+
+    if (!mounted) return;
+
     setState(() {
       _userRole = role ?? 'user';
       _loadingRole = false;
+    });
+
+    // ✅ Start user points notifications only for normal user
+    if ((role ?? 'user') == 'user') {
+      _startUserPointsNotificationListener();
+    }
+  }
+
+  void _startUserPointsNotificationListener() {
+    final user = _authService.getCurrentUser();
+    if (user == null) return;
+
+    _userDocSub?.cancel();
+    _userDocSub = _authService.getUserDataStream(user.uid).listen((doc) async {
+      if (!doc.exists) return;
+      final data = doc.data() as Map<String, dynamic>;
+
+      final points = (data['points'] ?? 0) as int;
+
+      // ignore first snapshot (initial load)
+      if (!_pointsListenerPrimed) {
+        _pointsListenerPrimed = true;
+        _lastPoints = points;
+        return;
+      }
+
+      final prev = _lastPoints ?? points;
+      _lastPoints = points;
+
+      if (points > prev) {
+        final diff = points - prev;
+        await NotificationService().showNotification(
+          'Points Earned!',
+          '+$diff pts added to your account',
+        );
+      }
+    }, onError: (e) {
+      // ignore
     });
   }
 
@@ -54,10 +110,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // If this is an agent, show the agent home instead of user home
     if (_userRole == 'agent') {
-      return const AgentTasksScreen();
+      return const AgentHomeScreen();
     }
 
-    // Default: normal user home (your existing UI)
+    // Default: normal user home
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
@@ -150,8 +206,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     'Hello,',
                     style: TextStyle(fontSize: 16, color: Color(0xFF9CA3AF)),
                   ),
-
-                  // 🔥 Capitalized username
                   Builder(
                     builder: (context) {
                       final rawName = userEmail.split('@')[0];
@@ -173,10 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFF88C999),
                   borderRadius: BorderRadius.circular(20),
@@ -184,14 +235,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(
-                      Icons.stars_rounded,
-                      color: Colors.white,
-                      size: 20,
-                    ),
+                    const Icon(Icons.stars_rounded, color: Colors.white, size: 20),
                     const SizedBox(width: 8),
                     Text(
-                      '$userPoints pts', // Displays the live points
+                      '$userPoints pts',
                       style: const TextStyle(
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
@@ -205,7 +252,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
           const SizedBox(height: 32),
 
-          // Main Action Card
           Container(
             width: double.infinity,
             padding: const EdgeInsets.all(24),
@@ -220,11 +266,7 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(
-                  Icons.recycling_rounded,
-                  color: Color(0xFF88C999),
-                  size: 48,
-                ),
+                const Icon(Icons.recycling_rounded, color: Color(0xFF88C999), size: 48),
                 const SizedBox(height: 16),
                 const Text(
                   'Ready to Recycle?',
@@ -243,9 +285,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed:
-                        () =>
-                            _onItemTapped(1), // Use the handler to switch tabs
+                    onPressed: () => _onItemTapped(1),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF88C999),
                       foregroundColor: Colors.white,
@@ -257,10 +297,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     child: const Text(
                       'Show QR Code',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),
@@ -270,7 +307,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
           const SizedBox(height: 32),
 
-          // Quick Actions
           const Text(
             'Quick Actions',
             style: TextStyle(
@@ -303,8 +339,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder:
-                                (context) => const RecyclingHistoryScreen(),
+                            builder: (context) => const RecyclingHistoryScreen(),
                           ),
                         );
                       },

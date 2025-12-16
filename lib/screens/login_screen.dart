@@ -26,31 +26,47 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signIn() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() {
-        _isLoading = true;
-      });
+    if (!_formKey.currentState!.validate()) return;
 
-      final user = await _authService.signInUser(
-        _emailController.text.trim(),
-        _passwordController.text.trim(),
-      );
+    setState(() => _isLoading = true);
 
-      setState(() {
-        _isLoading = false;
-      });
+    final user = await _authService.signInUser(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
 
-      if (user != null) {
-        Navigator.pushReplacementNamed(context, '/home');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Invalid email or password'),
-            backgroundColor: Color(0xFFEF4444),
-          ),
-        );
-      }
+    setState(() => _isLoading = false);
+
+    if (user == null) {
+      _showError('Invalid email or password');
+      return;
     }
+
+    // 🔐 ROLE CHECK
+    final role = await _authService.getCurrentUserRole();
+
+    if (role == 'user' || role == 'agent') {
+      Navigator.pushReplacementNamed(context, '/home');
+      return;
+    }
+
+    // ❌ Block admin / superadmin / kiosk
+    await _authService.signOutUser();
+
+    _showError(
+      role == 'kiosk'
+          ? 'This account is used by a kiosk device.'
+          : 'Admins must use the admin dashboard.',
+    );
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(msg),
+        backgroundColor: const Color(0xFFEF4444),
+      ),
+    );
   }
 
   @override

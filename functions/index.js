@@ -1,13 +1,17 @@
+// functions/index.js
 const {
   onDocumentUpdated,
   onDocumentCreated,
+  onDocumentDeleted,
 } = require("firebase-functions/v2/firestore");
+
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue } = require("firebase-admin/firestore");
+const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
+const crypto = require("crypto");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 
-// Initialize Firebase Admin
 initializeApp();
 const db = getFirestore();
 
@@ -16,6 +20,71 @@ const db = getFirestore();
 // ===========================================
 const FILL_LEVEL_THRESHOLD = 80;
 const REGION = "asia-southeast1";
+
+// ✅ Zones for agent assignment (must match your React dropdown)
+const ALLOWED_ZONES = ["Zone A", "Zone B", "Zone C"];
+
+// ===========================================
+// HELPERS
+// ===========================================
+async function getCallerRole(request) {
+  if (!request.auth?.uid) return null;
+
+  const meRef = db.collection("users").doc(request.auth.uid);
+  const meSnap = await meRef.get();
+  if (!meSnap.exists) return null;
+
+  return meSnap.data()?.role ?? null;
+}
+
+async function assertAdmin(request) {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+  const role = await getCallerRole(request);
+  if (role !== "admin" && role !== "superadmin") {
+    throw new HttpsError("permission-denied", "Admins only.");
+  }
+}
+
+// ✅ NEW: kiosk-only callable protection (or allow admin/superadmin for testing)
+async function assertKiosk(request) {
+  if (!request.auth) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+  const role = await getCallerRole(request);
+  if (role !== "kiosk" && role !== "admin" && role !== "superadmin") {
+    throw new HttpsError("permission-denied", "Kiosk only.");
+  }
+}
+
+function assertZone(zone) {
+  if (!zone || !ALLOWED_ZONES.includes(zone)) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Invalid zone. Allowed: ${ALLOWED_ZONES.join(", ")}`
+    );
+  }
+}
+
+/**
+ * Generate sequential agent code like: AGT-000001
+ * Requires Firestore doc: counters/agents { next: 1 }
+ */
+async function generateAgentId() {
+  const counterRef = db.collection("counters").doc("agents");
+
+  return await db.runTransaction(async (tx) => {
+    const snap = await tx.get(counterRef);
+    const rawNext = snap.exists ? snap.data()?.next : 1;
+    const next = Number.isFinite(rawNext) ? rawNext : 1;
+
+    tx.set(counterRef, { next: next + 1 }, { merge: true });
+
+    return `AGT-${String(next).padStart(3, "0")}`; // AGT-001
+  });
+}
+
 
 // ===============================================================
 //  FUNCTION 1: Auto-create collection task + update lastEmptied
@@ -38,9 +107,11 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       `KIOSK UPDATE → ${kioskId} | Before: ${before.fillLevel}% | After: ${after.fillLevel}%`
     );
 
-    // Detect kiosk emptied (high → low)
-    const wasFull = before.fillLevel >= FILL_LEVEL_THRESHOLD;
-    const nowLow = after.fillLevel <= 10;
+    // -------------------------------
+    // Detect kiosk emptied event
+    // -------------------------------
+    const wasFull = (before.fillLevel ?? 0) >= FILL_LEVEL_THRESHOLD;
+    const nowLow = (after.fillLevel ?? 0) <= 10;
 
     if (wasFull && nowLow) {
       console.log(`Kiosk ${kioskId} was emptied → Updating lastEmptied.`);
@@ -49,10 +120,12 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       });
     }
 
-    // Detect threshold crossing (low → high)
+    // -------------------------------
+    // Detect threshold crossing (create collection task)
+    // -------------------------------
     const crossedThreshold =
-      before.fillLevel < FILL_LEVEL_THRESHOLD &&
-      after.fillLevel >= FILL_LEVEL_THRESHOLD;
+      (before.fillLevel ?? 0) < FILL_LEVEL_THRESHOLD &&
+      (after.fillLevel ?? 0) >= FILL_LEVEL_THRESHOLD;
 
     if (!crossedThreshold) return null;
 
@@ -72,13 +145,22 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
 
     return db.collection("collectionTasks").add({
       kioskId,
-      kioskName: after.name || "Unnamed Kiosk",
+      kioskName: after.name || after.location || "Unnamed Kiosk",
       status: "pending",
       createdAt: FieldValue.serverTimestamp(),
+      agentUid: null,
       agentId: null,
       assignedAt: null,
+      startedAt: null,
       completedAt: null,
-      fillLevelAtCreation: after.fillLevel,
+
+      fillLevelAtCreation: after.fillLevel ?? 0,
+
+      proofPhotoUrl: null,
+      proofUploadedAt: null,
+
+      // used by Function 6 to prevent double processing
+      postProcessedAt: null,
     });
   }
 );
@@ -105,12 +187,15 @@ exports.awardPointsOnDeposit = onDocumentCreated(
 
     // Update aggregates
     try {
-      await userRef.update({
-        points: FieldValue.increment(pointsToAward),
-        totalRecycled: FieldValue.increment(weightInGrams),
-        depositCount: FieldValue.increment(1),
-        lastDepositAt: FieldValue.serverTimestamp(),
-      });
+      await userRef.set(
+        {
+          points: FieldValue.increment(pointsToAward),
+          totalRecycled: FieldValue.increment(weightInGrams),
+          depositCount: FieldValue.increment(1),
+          lastDepositAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
       console.log(`Updated aggregates for user ${userId}`);
     } catch (err) {
       console.error("Error updating user aggregates:", err);
@@ -139,10 +224,15 @@ exports.awardPointsOnDeposit = onDocumentCreated(
 );
 
 // ===============================================================
-//  FUNCTION 3: Securely Create Admin
+//  FUNCTION 3: Securely Create Admin (admin-only)
 // ===============================================================
-exports.createAdmin = onCall(async (request) => {
-  const { email, password, name } = request.data;
+exports.createAdmin = onCall({ region: REGION }, async (request) => {
+  await assertAdmin(request);
+
+  const { email, password, name } = request.data || {};
+  if (!email || !password || !name) {
+    throw new HttpsError("invalid-argument", "Missing email/password/name.");
+  }
 
   try {
     const userRecord = await getAuth().createUser({
@@ -167,12 +257,22 @@ exports.createAdmin = onCall(async (request) => {
 });
 
 // ===============================================================
-//  FUNCTION 4: Securely Create Agent
+//  FUNCTION 4: Securely Create Agent (admin-only) + AUTO agentCode
 // ===============================================================
-exports.createAgent = onCall(async (request) => {
-  const { email, password, name, phone, staffId, region } = request.data;
+exports.createAgent = onCall({ region: REGION }, async (request) => {
+  await assertAdmin(request);
+
+  const { email, password, name, phone, region } = request.data || {};
+  if (!email || !password || !name) {
+    throw new HttpsError("invalid-argument", "Missing email/password/name.");
+  }
+
+  // ✅ Validate zone coming from your dropdown
+  assertZone(region);
 
   try {
+    const agentId = await generateAgentId();
+
     const userRecord = await getAuth().createUser({
       email,
       password,
@@ -183,29 +283,39 @@ exports.createAgent = onCall(async (request) => {
       email,
       name,
       role: "agent",
+      agentId, // ✅ auto ID
       phone: phone || "",
-      staffId: staffId || "",
-      region: region || "",
+      region, // ✅ stored as zone
       createdAt: FieldValue.serverTimestamp(),
       active: true,
       tasksCompleted: 0,
+      lastTaskCompletedAt: null,
     });
 
-    return { success: true, message: "Agent created successfully." };
+    return { success: true, agentId, message: "Agent created successfully." };
   } catch (error) {
     console.error("Error creating agent:", error);
-    throw new HttpsError("internal", error.message);
+      throw new HttpsError(
+    "internal",
+    "createAgent failed",
+    {
+      originalMessage: error?.message || null,
+      originalCode: error?.code || null,
+      stack: error?.stack || null,
+    }
+  ); 
   }
 });
 
 // ===============================================================
-//  FUNCTION 5: Securely Delete User
+//  FUNCTION 5: Securely Delete User (admin-only)
 // ===============================================================
-exports.deleteUser = onCall(async (request) => {
-  const { targetUid } = request.data;
+exports.deleteUser  = onCall({ region: REGION }, async (request) => {
+  await assertAdmin(request);
 
-  if (!request.auth) {
-    throw new HttpsError("unauthenticated", "User must be logged in.");
+  const { targetUid } = request.data || {};
+  if (!targetUid) {
+    throw new HttpsError("invalid-argument", "Missing targetUid.");
   }
 
   try {
@@ -220,7 +330,8 @@ exports.deleteUser = onCall(async (request) => {
 });
 
 // ===============================================================
-// FUNCTION 6: Auto-update kiosk + agent stats when task completed
+//  FUNCTION 6 (BEST PRACTICE):
+//  When a task becomes COMPLETED, server performs all side effects.
 // ===============================================================
 exports.onCollectionTaskStatusChange = onDocumentUpdated(
   {
@@ -234,23 +345,41 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
     const after = event.data.after.data();
     const taskId = event.params.taskId;
 
-    // Only continue if status actually changed
+    if (!before || !after) return null;
+
+    // Only when status actually changes
     if (before.status === after.status) return null;
 
-    // Only process when status becomes "completed"
+    // Only when it becomes completed
     if (after.status !== "completed") return null;
 
-    console.log(`Task ${taskId} marked completed.`);
+    // Prevent double processing
+    if (after.postProcessedAt) {
+      console.log(`Task ${taskId} already post-processed. Skipping.`);
+      return null;
+    }
 
     const kioskId = after.kioskId;
-    const agentId = after.agentId;
+    const agentUid = after.agentUid;   // ✅ Firebase UID
+    const agentId = after.agentId;     // optional, for logging only
+
+    console.log(`Task ${taskId} marked completed. Post-processing...`);
 
     const batch = db.batch();
     const now = FieldValue.serverTimestamp();
 
-    // -----------------------------
-    // 1. Update KIOSK document
-    // -----------------------------
+    // 0) Mark task post-processed
+    const taskRef = db.collection("collectionTasks").doc(taskId);
+    batch.set(
+      taskRef,
+      {
+        postProcessedAt: now,
+        completedAt: after.completedAt || now,
+      },
+      { merge: true }
+    );
+
+    // 1) Update KIOSK
     if (kioskId) {
       const kioskRef = db.collection("kiosks").doc(kioskId);
       batch.set(
@@ -258,18 +387,19 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
         {
           fillLevel: 0,
           liquidHeight: 0,
-          lastCollectedAt: now,
+          lastCollected: now,
+          lastEmptied: now,
           lastUpdated: now,
+          assignedAgentUid: agentUid || null,
+          assignedAgentId: agentId || null,
         },
         { merge: true }
       );
     }
 
-    // -----------------------------
-    // 2. Update AGENT statistics
-    // -----------------------------
-    if (agentId) {
-      const agentRef = db.collection("users").doc(agentId);
+    // 2) Update AGENT statistics
+    if (agentUid) {
+      const agentRef = db.collection("users").doc(agentUid);
       batch.set(
         agentRef,
         {
@@ -280,9 +410,7 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
       );
     }
 
-    // -----------------------------
-    // 3. Create a collection log entry
-    // -----------------------------
+    // 3) Create collection log entry
     const logRef = db.collection("collectionLogs").doc();
     batch.set(logRef, {
       taskId,
@@ -291,11 +419,268 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
       completedAt: now,
       fillLevelAtCreation: after.fillLevelAtCreation || null,
       proofPhotoUrl: after.proofPhotoUrl || null,
+      createdAt: now,
     });
 
     await batch.commit();
     console.log(`Post-processing for task ${taskId} completed.`);
+    return null;
+  }
+);
+
+// ===============================================================
+//  FUNCTION 7: Keep aggregates correct when a deposit is DELETED
+// ===============================================================
+exports.onDepositDeleted = onDocumentDeleted(
+  {
+    document: "deposits/{depositId}",
+    region: REGION,
+  },
+  async (event) => {
+    if (!event.data) return null;
+
+    const deposit = event.data.data();
+    const userId = deposit.userId;
+    const weightInGrams = deposit.weight;
+
+    if (!userId || !weightInGrams) return null;
+
+    const pointsToRemove = Math.floor(weightInGrams / 10);
+
+    await db
+      .collection("users")
+      .doc(userId)
+      .set(
+        {
+          points: FieldValue.increment(-pointsToRemove),
+          totalRecycled: FieldValue.increment(-weightInGrams),
+          depositCount: FieldValue.increment(-1),
+        },
+        { merge: true }
+      );
 
     return null;
+  }
+);
+
+// ===============================================================
+//  FUNCTION 8: One-time rebuild aggregates (fix mismatch)
+// ===============================================================
+exports.rebuildUserAggregates = onCall({ region: REGION }, async (request) => {
+  await assertAdmin(request);
+
+  const snap = await db.collection("deposits").get();
+
+  const perUser = new Map(); // userId -> { grams, count, points }
+  snap.forEach((doc) => {
+    const d = doc.data();
+    const userId = d.userId;
+    const weight = d.weight || 0;
+    if (!userId || !weight) return;
+
+    const points = Math.floor(weight / 10);
+
+    const cur = perUser.get(userId) || { grams: 0, count: 0, points: 0 };
+    cur.grams += weight;
+    cur.count += 1;
+    cur.points += points;
+    perUser.set(userId, cur);
+  });
+
+  const entries = Array.from(perUser.entries());
+  let batch = db.batch();
+  let ops = 0;
+
+  for (const [userId, agg] of entries) {
+    const ref = db.collection("users").doc(userId);
+    batch.set(
+      ref,
+      {
+        totalRecycled: agg.grams,
+        depositCount: agg.count,
+        points: agg.points,
+        aggregatesRebuiltAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    ops++;
+    if (ops >= 450) {
+      await batch.commit();
+      batch = db.batch();
+      ops = 0;
+    }
+  }
+
+  if (ops > 0) await batch.commit();
+
+  return {
+    success: true,
+    usersUpdated: entries.length,
+    depositsScanned: snap.size,
+  };
+});
+
+// ===============================================================
+//  FUNCTION 9: Create time-limited QR session (user)
+//  App calls this to display QR token (NOT uid)
+// ===============================================================
+exports.createQrSession = onCall({ region: REGION }, async (request) => {
+  if (!request.auth?.uid) {
+    throw new HttpsError("unauthenticated", "Login required.");
+  }
+
+  const uid = request.auth.uid;
+
+  // 32-char random token
+  const token = crypto.randomBytes(16).toString("hex");
+
+  const expiresInSeconds = 60;
+  const nowMs = Date.now();
+  const expiresAt = Timestamp.fromMillis(nowMs + expiresInSeconds * 1000);
+
+  // ✅ NEW: expire any previous active sessions for this uid
+  const activeSnap = await db
+    .collection("qrSessions")
+    .where("uid", "==", uid)
+    .where("status", "==", "active")
+    .get();
+
+  const batch = db.batch();
+
+  activeSnap.forEach((doc) => {
+    batch.set(
+      doc.ref,
+      {
+        status: "expired",
+        expiredAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+  });
+
+  // create new active token
+  const newRef = db.collection("qrSessions").doc(token);
+  batch.set(newRef, {
+    uid,
+    status: "active", // active | used | expired
+    createdAt: FieldValue.serverTimestamp(),
+    expiresAt,
+    usedAt: null,
+    usedByKioskId: null,
+  });
+
+  await batch.commit();
+
+  // ✅ return expiresAtMs so app can do accurate countdown
+  return {
+    success: true,
+    token,
+    expiresInSeconds,
+    expiresAtMs: expiresAt.toMillis(),
+  };
+});
+
+// ===============================================================
+//  FUNCTION 10: Consume QR session (kiosk calls this)
+//  Kiosk scans token -> server validates -> returns uid
+// ===============================================================
+exports.consumeQrSession = onCall({ region: REGION }, async (request) => {
+  await assertKiosk(request);
+
+  const { token, kioskId } = request.data || {};
+  if (!token || !kioskId) {
+    throw new HttpsError("invalid-argument", "Missing token/kioskId.");
+  }
+
+  const ref = db.collection("qrSessions").doc(token);
+
+  return await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) {
+      throw new HttpsError("not-found", "Invalid QR.");
+    }
+
+    const data = snap.data();
+
+    if (data.status !== "active") {
+      throw new HttpsError("failed-precondition", "QR already used/expired.");
+    }
+
+    const expiresAt = data.expiresAt?.toDate?.();
+    if (!expiresAt || expiresAt.getTime() < Date.now()) {
+      tx.update(ref, { status: "expired" });
+      throw new HttpsError("deadline-exceeded", "QR expired.");
+    }
+
+    // ✅ mark as used (single-use)
+    tx.update(ref, {
+      status: "used",
+      usedAt: FieldValue.serverTimestamp(),
+      usedByKioskId: kioskId,
+    });
+
+    return { success: true, uid: data.uid };
+  });
+});
+
+exports.cleanupQrSessions = onSchedule(
+  {
+    region: REGION,
+    schedule: "every day 03:00",
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const now = Timestamp.now();
+
+    const cutoffUsedMs = Date.now() - 24 * 60 * 60 * 1000; // 24h ago
+    const cutoffUsedAt = Timestamp.fromMillis(cutoffUsedMs);
+
+    let totalExpired = 0;
+    let totalUsedOld = 0;
+
+    // helper: delete in batches
+    async function deleteByQuery(q, label) {
+      while (true) {
+        const snap = await q.limit(500).get();
+        if (snap.empty) break;
+
+        let batch = db.batch();
+        let ops = 0;
+
+        for (const d of snap.docs) {
+          batch.delete(d.ref);
+          ops++;
+
+          if (ops >= 450) {
+            await batch.commit();
+            batch = db.batch();
+            ops = 0;
+          }
+        }
+
+        if (ops > 0) await batch.commit();
+
+        if (label === "expired") totalExpired += snap.size;
+        if (label === "usedOld") totalUsedOld += snap.size;
+      }
+    }
+
+    // delete expired (any status) where expiresAt <= now
+    await deleteByQuery(
+      db.collection("qrSessions").where("expiresAt", "<=", now),
+      "expired"
+    );
+
+    // delete used sessions where usedAt <= cutoff
+    await deleteByQuery(
+      db
+        .collection("qrSessions")
+        .where("status", "==", "used")
+        .where("usedAt", "<=", cutoffUsedAt),
+      "usedOld"
+    );
+
+    console.log(`cleanupQrSessions: expired=${totalExpired}, usedOld=${totalUsedOld}`);
   }
 );

@@ -12,9 +12,16 @@ import 'package:uco_kiosk_app/screens/reward_screen.dart';
 import 'package:uco_kiosk_app/screens/education_screen.dart';
 import 'package:uco_kiosk_app/screens/education_quiz_screen.dart';
 
-void main() async {
+// ✅ NEW
+import 'package:uco_kiosk_app/services/notification_service.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // ✅ NEW: init local notifications
+  await NotificationService().init();
+
   runApp(const MyApp());
 }
 
