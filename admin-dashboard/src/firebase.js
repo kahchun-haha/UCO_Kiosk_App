@@ -25,3 +25,4 @@ export const functions = getFunctions(app, "asia-southeast1");
 export const createAgentCallable = httpsCallable(functions, 'createAgent');
 export const createAdminCallable = httpsCallable(functions, 'createAdmin');
 export const deleteUserCallable = httpsCallable(functions, 'deleteUser');
+export const sendMonthlyImpactEmailsManualCallable = httpsCallable(functions, "sendMonthlyImpactEmailsManual");

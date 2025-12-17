@@ -1,4 +1,13 @@
 // functions/index.js
+const sgMail = require("@sendgrid/mail");
+const { defineSecret } = require("firebase-functions/params");
+
+// SendGrid secret (stored in Firebase secrets manager)
+const SENDGRID_API_KEY = defineSecret("SENDGRID_API_KEY");
+
+// Change this to your verified SendGrid sender
+const EMAIL_FROM = "transitmalaya@gmail.com";
+
 const {
   onDocumentUpdated,
   onDocumentCreated,
@@ -290,6 +299,9 @@ exports.createAgent = onCall({ region: REGION }, async (request) => {
       active: true,
       tasksCompleted: 0,
       lastTaskCompletedAt: null,
+      pushNotifications: true,
+      emailUpdates: false,
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
     return { success: true, agentId, message: "Agent created successfully." };
@@ -682,5 +694,223 @@ exports.cleanupQrSessions = onSchedule(
     );
 
     console.log(`cleanupQrSessions: expired=${totalExpired}, usedOld=${totalUsedOld}`);
+  }
+);
+
+exports.sendMonthlyImpactEmails = onSchedule(
+  {
+    region: REGION,
+    schedule: "0 9 1 * *", // 09:00 on day 1 every month
+    timeZone: "Asia/Kuala_Lumpur",
+    secrets: [SENDGRID_API_KEY],
+  },
+  async () => {
+    sgMail.setApiKey(SENDGRID_API_KEY.value());
+
+    // Query users who enabled email updates
+    const snap = await db
+      .collection("users")
+      .where("emailUpdates", "==", true)
+      .get();
+
+    if (snap.empty) {
+      console.log("sendMonthlyImpactEmails: no users opted-in.");
+      return;
+    }
+
+    let sent = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    // Send one-by-one (safe/simple). You can optimize later.
+    for (const doc of snap.docs) {
+      const u = doc.data() || {};
+      const email = u.email;
+      if (!email) {
+        skipped++;
+        continue;
+      }
+
+      const name = u.name || email.split("@")[0] || "there";
+
+      // Use your existing aggregate fields
+      const points = u.points ?? 0;
+      const totalRecycled = u.totalRecycled ?? 0; // grams
+      const depositCount = u.depositCount ?? 0;
+
+      const totalKg = (Number(totalRecycled) / 1000).toFixed(2);
+
+      const subject = "Your Monthly UCO Impact Report 🌱";
+
+      const text = `
+Hi ${name},
+
+Here is your monthly impact summary:
+
+• Total deposits: ${depositCount}
+• Total recycled: ${totalKg} kg
+• Current points: ${points}
+
+Thank you for helping keep used cooking oil out of drains and the environment!
+
+— UCO Kiosk App
+      `.trim();
+
+      const html = `
+        <div style="font-family:Arial,sans-serif;line-height:1.5">
+          <h2>Your Monthly UCO Impact Report 🌱</h2>
+          <p>Hi <b>${name}</b>,</p>
+          <p>Here is your monthly impact summary:</p>
+          <ul>
+            <li><b>Total deposits:</b> ${depositCount}</li>
+            <li><b>Total recycled:</b> ${totalKg} kg</li>
+            <li><b>Current points:</b> ${points}</li>
+          </ul>
+          <p>Thank you for helping keep used cooking oil out of drains and the environment!</p>
+          <p style="color:#6B7280">— UCO Kiosk App</p>
+        </div>
+      `;
+
+      try {
+        await sgMail.send({
+          to: email,
+          from: EMAIL_FROM,
+          subject,
+          text,
+          html,
+        });
+
+        sent++;
+      } catch (err) {
+        failed++;
+        console.error(`Email failed for uid=${doc.id} email=${email}`, err);
+      }
+    }
+
+    console.log(
+      `sendMonthlyImpactEmails done. sent=${sent}, skipped=${skipped}, failed=${failed}`
+    );
+  }
+);
+
+exports.sendTestEmail = onCall(
+  { region: REGION, secrets: [SENDGRID_API_KEY] },
+  async (request) => {
+    // Optional: allow admin only (recommended)
+    // await assertAdmin(request);
+
+    const { to } = request.data || {};
+    if (!to) throw new HttpsError("invalid-argument", "Missing to email.");
+
+    sgMail.setApiKey(SENDGRID_API_KEY.value());
+
+    await sgMail.send({
+      to,
+      from: EMAIL_FROM,
+      subject: "SendGrid test ✅",
+      text: "If you received this, SendGrid + Firebase Functions secrets are working.",
+      html: "<b>If you received this, SendGrid + Firebase Functions secrets are working.</b>",
+    });
+
+    return { success: true };
+  }
+);
+
+exports.sendMonthlyImpactEmailsManual = onCall(
+  {
+    region: REGION,
+    secrets: [SENDGRID_API_KEY],
+  },
+  async (request) => {
+    // 🔒 Admin protection (reuse your existing helper)
+    await assertAdmin(request);
+
+    sgMail.setApiKey(SENDGRID_API_KEY.value());
+
+    const snap = await db
+      .collection("users")
+      .where("emailUpdates", "==", true)
+      .get();
+
+    if (snap.empty) {
+      return {
+        success: true,
+        sent: 0,
+        skipped: 0,
+        failed: 0,
+        message: "No users opted in",
+      };
+    }
+
+    let sent = 0;
+    let skipped = 0;
+    let failed = 0;
+
+    for (const doc of snap.docs) {
+      const u = doc.data() || {};
+      const email = u.email;
+
+      if (!email) {
+        skipped++;
+        continue;
+      }
+
+      const name = u.name || email.split("@")[0] || "there";
+      const points = u.points ?? 0;
+      const totalRecycled = u.totalRecycled ?? 0;
+      const depositCount = u.depositCount ?? 0;
+      const totalKg = (Number(totalRecycled) / 1000).toFixed(2);
+
+      const subject = "Your Monthly UCO Impact Report 🌱";
+
+      const text = `
+Hi ${name},
+
+Here is your monthly impact summary:
+
+• Total deposits: ${depositCount}
+• Total recycled: ${totalKg} kg
+• Current points: ${points}
+
+Thank you for helping keep used cooking oil out of drains and the environment!
+
+— UCO Kiosk App
+      `.trim();
+
+      const html = `
+        <div style="font-family:Arial,sans-serif;line-height:1.5">
+          <h2>Your Monthly UCO Impact Report 🌱</h2>
+          <p>Hi <b>${name}</b>,</p>
+          <ul>
+            <li><b>Total deposits:</b> ${depositCount}</li>
+            <li><b>Total recycled:</b> ${totalKg} kg</li>
+            <li><b>Current points:</b> ${points}</li>
+          </ul>
+          <p>Thank you for helping keep used cooking oil out of drains.</p>
+          <p style="color:#6B7280">— UCO Kiosk App</p>
+        </div>
+      `;
+
+      try {
+        await sgMail.send({
+          to: email,
+          from: EMAIL_FROM,
+          subject,
+          text,
+          html,
+        });
+        sent++;
+      } catch (err) {
+        failed++;
+        console.error(`Manual email failed uid=${doc.id}`, err);
+      }
+    }
+
+    return {
+      success: true,
+      sent,
+      skipped,
+      failed,
+    };
   }
 );

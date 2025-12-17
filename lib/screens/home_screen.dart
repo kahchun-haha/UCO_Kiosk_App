@@ -68,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!doc.exists) return;
       final data = doc.data() as Map<String, dynamic>;
 
-      final points = (data['points'] ?? 0) as int;
+      final points = (data['points'] as num?)?.toInt() ?? 0;
 
       // ignore first snapshot (initial load)
       if (!_pointsListenerPrimed) {
@@ -82,7 +82,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (points > prev) {
         final diff = points - prev;
-        await NotificationService().showNotification(
+        await NotificationService().showIfEnabled(
           'Points Earned!',
           '+$diff pts added to your account',
         );

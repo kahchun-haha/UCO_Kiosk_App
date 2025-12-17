@@ -81,15 +81,14 @@ class _AgentHomeScreenState extends State<AgentHomeScreen> {
         if (status == 'pending' && doc.id != _lastNotifiedTaskId) {
           _lastNotifiedTaskId = doc.id;
 
-          await NotificationService().showNotification(
+          await NotificationService().showIfEnabled(
             'New Collection Task',
             '$kioskName needs collection',
           );
         }
       },
       onError: (e) {
-        // optional debug
-        // ignore errors to avoid crashing
+        debugPrint("🔥 Task listener error: $e");
       },
     );
   }

@@ -20,6 +20,9 @@ class AuthService {
           'totalRecycled': 0,
           'depositCount': 0, // keep a counter instead of storing array
           'role': 'user',
+          'pushNotifications': true,
+          'emailUpdates': false,
+          'updatedAt': FieldValue.serverTimestamp(),
         });
       }
       return user;

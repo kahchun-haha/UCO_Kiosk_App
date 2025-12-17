@@ -1,1 +1,40 @@
-{"firestore":{"rules":"firestore.rules","indexes":"firestore.indexes.json"},"storage":{"rules":"storage.rules"},"flutter":{"platforms":{"android":{"default":{"projectId":"uco-kiosk-personal-f92b6","appId":"1:1045517832974:android:ce8f126631e55a91037d5f","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"uco-kiosk-personal-f92b6","configurations":{"android":"1:1045517832974:android:ce8f126631e55a91037d5f","ios":"1:1045517832974:ios:db8ce2bfdf1bf327037d5f"}}}}},"functions":[{"source":"functions","codebase":"default","ignore":["node_modules",".git","firebase-debug.log","firebase-debug.*.log","*.local"]}]}
+{
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": { "rules": "storage.rules" },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "uco-kiosk-personal-f92b6",
+          "appId": "1:1045517832974:android:ce8f126631e55a91037d5f",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "uco-kiosk-personal-f92b6",
+          "configurations": {
+            "android": "1:1045517832974:android:ce8f126631e55a91037d5f",
+            "ios": "1:1045517832974:ios:db8ce2bfdf1bf327037d5f"
+          }
+        }
+      }
+    }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
+}
