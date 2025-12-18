@@ -1,3 +1,4 @@
+// src/pages/AnalyticsPage.js
 import React, { useEffect, useState } from 'react';
 import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -32,12 +33,12 @@ export default function AnalyticsPage() {
 
   // Deposits analytics
   const [dailyLabels, setDailyLabels] = useState([]);
-  const [dailyVolume, setDailyVolume] = useState([]);
-  const [kioskVolume, setKioskVolume] = useState([]);
+  const [dailyKg, setDailyKg] = useState([]);
+  const [kioskKg, setKioskKg] = useState([]);
   const [summary, setSummary] = useState({
-    totalLiters: 0,
+    totalKg: 0,
     deposits: 0,
-    avgPerDeposit: 0,
+    avgKgPerDeposit: 0,
     kiosks: 0,
   });
 
@@ -60,7 +61,7 @@ export default function AnalyticsPage() {
         else if (range === '90d') start.setDate(now.getDate() - 90);
 
         // =========================
-        // 1) Deposits
+        // 1) Deposits (weight)
         // =========================
         const depositsQ = query(
           collection(db, 'deposits'),
@@ -74,35 +75,36 @@ export default function AnalyticsPage() {
         depSnap.forEach((doc) => {
           const data = doc.data();
           if (!data.timestamp || typeof data.timestamp.toDate !== 'function') return;
+
           const ts = data.timestamp.toDate();
-          const weight = data.weight || 0;
+          const grams = Number(data.weight);
+          const weightKg = (Number.isFinite(grams) ? grams : 0) / 1000;
 
           deps.push({
             ts,
-            weight,
+            weightKg,
             kiosk: data.kioskName || data.kioskId || 'Unknown kiosk',
           });
         });
 
         // summary
-        const totalGrams = deps.reduce((sum, d) => sum + d.weight, 0);
-        const totalLiters = totalGrams / 1000;
+        const totalKg = deps.reduce((sum, d) => sum + d.weightKg, 0);
         const depositsCount = deps.length;
-        const avgPerDeposit = depositsCount ? totalLiters / depositsCount : 0;
+        const avgKgPerDeposit = depositsCount ? totalKg / depositsCount : 0;
         const kioskSet = new Set(deps.map((d) => d.kiosk));
 
         setSummary({
-          totalLiters: Number(totalLiters.toFixed(2)),
+          totalKg: Number(totalKg.toFixed(2)),
           deposits: depositsCount,
-          avgPerDeposit: Number(avgPerDeposit.toFixed(2)),
+          avgKgPerDeposit: Number(avgKgPerDeposit.toFixed(2)),
           kiosks: kioskSet.size,
         });
 
-        // daily chart
+        // daily chart (kg)
         const dailyMap = {};
         deps.forEach((d) => {
           const key = d.ts.toISOString().slice(0, 10);
-          dailyMap[key] = (dailyMap[key] || 0) + d.weight / 1000;
+          dailyMap[key] = (dailyMap[key] || 0) + d.weightKg;
         });
 
         const sortedDays = Object.keys(dailyMap).sort();
@@ -111,24 +113,24 @@ export default function AnalyticsPage() {
             new Date(k).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
           )
         );
-        setDailyVolume(sortedDays.map((k) => Number(dailyMap[k].toFixed(2))));
+        setDailyKg(sortedDays.map((k) => Number((dailyMap[k] || 0).toFixed(3))));
 
-        // kiosk chart
+        // kiosk chart (kg)
         const kioskMap = {};
         deps.forEach((d) => {
-          kioskMap[d.kiosk] = (kioskMap[d.kiosk] || 0) + d.weight / 1000;
+          kioskMap[d.kiosk] = (kioskMap[d.kiosk] || 0) + d.weightKg;
         });
+
         const kioskEntries = Object.entries(kioskMap).sort((a, b) => b[1] - a[1]);
-        setKioskVolume(
-          kioskEntries.map(([name, liters]) => ({
+        setKioskKg(
+          kioskEntries.map(([name, kg]) => ({
             name,
-            liters: Number(liters.toFixed(2)),
+            kg: Number((kg || 0).toFixed(3)),
           }))
         );
 
         // =========================
         // 2) Collection Tasks (FR-4.5)
-        // Use YOUR field names: createdAt, completedAt, agentId, status
         // =========================
         const tasksQ = query(
           collection(db, 'collectionTasks'),
@@ -159,7 +161,6 @@ export default function AnalyticsPage() {
           });
         });
 
-        // Tasks per agent (count ALL tasks; change logic if you only want completed)
         const byAgent = {};
         tasks.forEach((t) => {
           const key = t.agentId || 'Unassigned';
@@ -172,7 +173,6 @@ export default function AnalyticsPage() {
 
         setTasksByAgent(byAgentSorted);
 
-        // Avg collection time: createdAt -> completedAt (completed only)
         const completed = tasks.filter(
           (t) => t.createdAt && t.completedAt && t.completedAt >= t.createdAt
         );
@@ -202,7 +202,7 @@ export default function AnalyticsPage() {
   }, [range]);
 
   // =========================
-  // Export report CSV (FR-4.5)
+  // Export report CSV (weight)
   // =========================
   const exportAnalyticsCSV = () => {
     const header = ['Metric', 'Value'];
@@ -210,9 +210,9 @@ export default function AnalyticsPage() {
 
     const rows = [
       ['Range', range],
-      ['Total UCO (L)', summary.totalLiters],
+      ['Total UCO (kg)', summary.totalKg],
       ['Deposits', summary.deposits],
-      ['Avg per Deposit (L)', summary.avgPerDeposit],
+      ['Avg per Deposit (kg)', summary.avgKgPerDeposit],
       ['Active Kiosks', summary.kiosks],
       ['Total Tasks', taskSummary.totalTasks],
       ['Completed Tasks', taskSummary.completedTasks],
@@ -265,9 +265,9 @@ export default function AnalyticsPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
-        <SummaryCard label="Total Volume" value={`${summary.totalLiters} L`} />
+        <SummaryCard label="Total Weight" value={`${Number(summary.totalKg || 0).toFixed(2)} kg`} />
         <SummaryCard label="Deposits" value={summary.deposits} />
-        <SummaryCard label="Avg per Deposit" value={`${summary.avgPerDeposit} L`} />
+        <SummaryCard label="Avg per Deposit" value={`${Number(summary.avgKgPerDeposit || 0).toFixed(2)} kg`} />
         <SummaryCard label="Active Kiosks" value={summary.kiosks} />
         <SummaryCard label="Total Tasks" value={taskSummary.totalTasks} />
         <SummaryCard label="Avg Collection Time" value={`${taskSummary.avgHours} hrs`} />
@@ -277,9 +277,9 @@ export default function AnalyticsPage() {
         <div className="p-8 text-center text-text-sub">Loading analytics…</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Daily volume */}
+          {/* Daily weight */}
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-bold text-text-main mb-4">Daily Volume</h3>
+            <h3 className="text-lg font-bold text-text-main mb-4">Daily Weight</h3>
             {dailyLabels.length === 0 ? (
               <p className="text-sm text-text-sub">No data for selected range.</p>
             ) : (
@@ -288,8 +288,8 @@ export default function AnalyticsPage() {
                   labels: dailyLabels,
                   datasets: [
                     {
-                      label: 'Liters',
-                      data: dailyVolume,
+                      label: 'kg',
+                      data: dailyKg,
                       borderColor: '#22c55e',
                       backgroundColor: 'rgba(34,197,94,0.15)',
                       tension: 0.3,
@@ -299,25 +299,30 @@ export default function AnalyticsPage() {
                 options={{
                   responsive: true,
                   plugins: { legend: { display: false } },
-                  scales: { y: { beginAtZero: true } },
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      ticks: { callback: (value) => `${value} kg` },
+                    },
+                  },
                 }}
               />
             )}
           </div>
 
-          {/* Kiosk volume */}
+          {/* Kiosk weight */}
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-bold text-text-main mb-4">Volume by Kiosk</h3>
-            {kioskVolume.length === 0 ? (
+            <h3 className="text-lg font-bold text-text-main mb-4">Weight by Kiosk</h3>
+            {kioskKg.length === 0 ? (
               <p className="text-sm text-text-sub">No data for selected range.</p>
             ) : (
               <Bar
                 data={{
-                  labels: kioskVolume.map((k) => k.name),
+                  labels: kioskKg.map((k) => k.name),
                   datasets: [
                     {
-                      label: 'Liters',
-                      data: kioskVolume.map((k) => k.liters),
+                      label: 'kg',
+                      data: kioskKg.map((k) => k.kg),
                       backgroundColor: 'rgba(59,130,246,0.7)',
                     },
                   ],
@@ -325,7 +330,12 @@ export default function AnalyticsPage() {
                 options={{
                   responsive: true,
                   plugins: { legend: { display: false } },
-                  scales: { y: { beginAtZero: true } },
+                  scales: {
+                    y: {
+                      beginAtZero: true,
+                      ticks: { callback: (value) => `${value} kg` },
+                    },
+                  },
                 }}
               />
             )}

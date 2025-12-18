@@ -42,7 +42,7 @@ export default function DashboardHome() {
     users: 0,
     kiosks: 0,
     tasks: 0,
-    volume: 0,
+    totalKg: 0,
   });
   const [loading, setLoading] = useState(true);
 
@@ -50,10 +50,10 @@ export default function DashboardHome() {
 
   // Chart state
   const [dailyLabels, setDailyLabels] = useState([]); // x-axis for daily chart
-  const [dailyVolume, setDailyVolume] = useState([]); // liters per day
-  const [topKiosks, setTopKiosks] = useState([]); // [ [name, liters], ... ]
+  const [dailyKg, setDailyKg] = useState([]); // kg per day
+  const [topKiosks, setTopKiosks] = useState([]); // [ [name, kg], ... ]
 
-// ----------------------------------------------------
+  // ----------------------------------------------------
   // 1. SUMMARY STATS  (manual counting, no aggregates)
   // ----------------------------------------------------
   useEffect(() => {
@@ -76,25 +76,24 @@ export default function DashboardHome() {
         const tasksSnap = await getDocs(tasksQuery);
         const pendingCount = tasksSnap.size;
 
-        // 4. Total recycled (sum of users.totalRecycled)
+        // 4. Total recycled (sum of users.totalRecycled) [grams -> kg]
         let totalGrams = 0;
         usersSnap.forEach((doc) => {
           const data = doc.data();
-          if (typeof data.totalRecycled === 'number') {
-            totalGrams += data.totalRecycled;
-          }
+          const g = Number(data.totalRecycled);
+          if (Number.isFinite(g)) totalGrams += g;
         });
-        const totalLiters = (totalGrams / 1000).toFixed(1);
+
+        const totalKg = Number((totalGrams / 1000).toFixed(2));
 
         setStats({
           users: userCount,
           kiosks: kioskCount,
           tasks: pendingCount,
-          volume: totalLiters,
+          totalKg,
         });
       } catch (e) {
         console.error('Error loading stats:', e);
-        // leave defaults if something fails
       } finally {
         setLoading(false);
       }
@@ -102,7 +101,6 @@ export default function DashboardHome() {
 
     fetchStats();
   }, []);
-
 
   // ----------------------------------------------------
   // 2. RECENT DEPOSITS (last 5)
@@ -124,14 +122,14 @@ export default function DashboardHome() {
           ts = data.timestamp.toDate();
         }
 
-        const weightGrams = data.weight || 0;
-        const volumeLiters = (weightGrams / 1000).toFixed(2);
+        const grams = Number(data.weight);
+        const weightKg = (Number.isFinite(grams) ? grams : 0) / 1000;
 
         return {
           id: doc.id,
           kioskName: data.kioskName || data.kioskId || 'Unknown Kiosk',
           userId: data.userId || 'N/A',
-          volumeLiters,
+          weightKg,
           timestamp: ts,
         };
       });
@@ -143,13 +141,13 @@ export default function DashboardHome() {
   }, []);
 
   // ----------------------------------------------------
-  // 3. ANALYTICS: DAILY VOLUME + TOP KIOSKS
+  // 3. ANALYTICS: DAILY WEIGHT + TOP KIOSKS
   // ----------------------------------------------------
   useEffect(() => {
     const q = query(
       collection(db, 'deposits'),
       orderBy('timestamp', 'desc'),
-      limit(500) // enough for last days & kiosks
+      limit(500)
     );
 
     const unsub = onSnapshot(q, (snap) => {
@@ -161,24 +159,24 @@ export default function DashboardHome() {
           ts = data.timestamp.toDate();
         }
 
-        const weight = data.weight || 0;
+        const grams = Number(data.weight);
+        const weightKg = (Number.isFinite(grams) ? grams : 0) / 1000;
         const kioskName = data.kioskName || data.kioskId || 'Unknown Kiosk';
 
-        return { ts, weight, kioskName };
+        return { ts, weightKg, kioskName };
       });
 
-      // ---- DAILY VOLUME (last 7 days) ----
+      // ---- DAILY WEIGHT (last 7 days) ----
       const today = new Date();
       const dateKeys = [];
       const labelList = [];
       const dailyMap = {};
 
-      // Build 7 days: 6 days ago ... today
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(today.getDate() - i);
 
-        const key = d.toISOString().slice(0, 10); // yyyy-mm-dd
+        const key = d.toISOString().slice(0, 10);
         const label = d.toLocaleDateString('en-GB', {
           day: '2-digit',
           month: 'short',
@@ -193,23 +191,20 @@ export default function DashboardHome() {
         if (!dep.ts) return;
         const key = dep.ts.toISOString().slice(0, 10);
         if (dailyMap[key] !== undefined) {
-          dailyMap[key] += dep.weight / 1000; // grams → liters
+          dailyMap[key] += dep.weightKg; // already kg
         }
       });
 
-      const volumeList = dateKeys.map((k) =>
-        Number(dailyMap[k].toFixed(2))
-      );
+      const kgList = dateKeys.map((k) => Number((dailyMap[k] || 0).toFixed(3)));
 
       setDailyLabels(labelList);
-      setDailyVolume(volumeList);
+      setDailyKg(kgList);
 
-      // ---- TOP KIOSKS BY TOTAL VOLUME ----
+      // ---- TOP KIOSKS BY TOTAL WEIGHT ----
       const kioskMap = {};
       deposits.forEach((dep) => {
-        if (!dep.weight) return;
-        kioskMap[dep.kioskName] =
-          (kioskMap[dep.kioskName] || 0) + dep.weight / 1000;
+        if (!dep.weightKg) return;
+        kioskMap[dep.kioskName] = (kioskMap[dep.kioskName] || 0) + dep.weightKg;
       });
 
       const sorted = Object.entries(kioskMap)
@@ -222,64 +217,40 @@ export default function DashboardHome() {
     return () => unsub();
   }, []);
 
-  // ----------------------------------------------------
-  // RENDER
-  // ----------------------------------------------------
   if (loading) {
-    return (
-      <div className="p-8 text-center text-gray-500">
-        Loading live data...
-      </div>
-    );
+    return <div className="p-8 text-center text-gray-500">Loading live data...</div>;
   }
 
   return (
     <div>
       <h1 className="text-3xl font-bold text-text-main mb-2">Overview</h1>
-      <p className="text-text-sub mb-8">
-        Live data from your recycling network.
-      </p>
+      <p className="text-text-sub mb-8">Live data from your recycling network.</p>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <StatCard
           icon="♻️"
           label="Total Recycled"
-          value={`${stats.volume} L`}
+          value={`${Number(stats.totalKg || 0).toFixed(2)} kg`}
           color="bg-primary"
         />
-        <StatCard
-          icon="👥"
-          label="Registered Users"
-          value={stats.users}
-          color="bg-blue-500"
-        />
-        <StatCard
-          icon="📍"
-          label="Active Kiosks"
-          value={stats.kiosks}
-          color="bg-orange-500"
-        />
-        <StatCard
-          icon="🚛"
-          label="Pending Tasks"
-          value={stats.tasks}
-          color="bg-red-500"
-        />
+        <StatCard icon="👥" label="Registered Users" value={stats.users} color="bg-blue-500" />
+        <StatCard icon="📍" label="Active Kiosks" value={stats.kiosks} color="bg-orange-500" />
+        <StatCard icon="🚛" label="Pending Tasks" value={stats.tasks} color="bg-red-500" />
       </div>
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-        {/* Daily Volume Chart */}
+        {/* Daily Weight Chart */}
         <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-          <h2 className="text-lg font-bold mb-4">Daily Volume (Last 7 Days)</h2>
+          <h2 className="text-lg font-bold mb-4">Daily Weight (Last 7 Days)</h2>
           <Line
             data={{
               labels: dailyLabels,
               datasets: [
                 {
-                  label: 'Liters Recycled',
-                  data: dailyVolume,
+                  label: 'kg Recycled',
+                  data: dailyKg,
                   borderColor: '#22c55e',
                   backgroundColor: 'rgba(34, 197, 94, 0.15)',
                   tension: 0.3,
@@ -289,15 +260,11 @@ export default function DashboardHome() {
             }}
             options={{
               responsive: true,
-              plugins: {
-                legend: { display: false },
-              },
+              plugins: { legend: { display: false } },
               scales: {
                 y: {
                   beginAtZero: true,
-                  ticks: {
-                    callback: (value) => `${value} L`,
-                  },
+                  ticks: { callback: (value) => `${value} kg` },
                 },
               },
             }}
@@ -306,7 +273,7 @@ export default function DashboardHome() {
 
         {/* Top Kiosks Chart */}
         <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-          <h2 className="text-lg font-bold mb-4">Top Kiosks (by Volume)</h2>
+          <h2 className="text-lg font-bold mb-4">Top Kiosks (by Weight)</h2>
           {topKiosks.length === 0 ? (
             <p className="text-sm text-text-sub">Not enough data yet.</p>
           ) : (
@@ -315,25 +282,19 @@ export default function DashboardHome() {
                 labels: topKiosks.map((k) => k[0]),
                 datasets: [
                   {
-                    label: 'Liters',
-                    data: topKiosks.map((k) =>
-                      Number(k[1].toFixed(2))
-                    ),
+                    label: 'kg',
+                    data: topKiosks.map((k) => Number((k[1] || 0).toFixed(3))),
                     backgroundColor: 'rgba(59, 130, 246, 0.6)',
                   },
                 ],
               }}
               options={{
                 responsive: true,
-                plugins: {
-                  legend: { display: false },
-                },
+                plugins: { legend: { display: false } },
                 scales: {
                   y: {
                     beginAtZero: true,
-                    ticks: {
-                      callback: (value) => `${value} L`,
-                    },
+                    ticks: { callback: (value) => `${value} kg` },
                   },
                 },
               }}
@@ -346,9 +307,7 @@ export default function DashboardHome() {
       <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100 mb-8">
         <div className="flex justify-between items-center mb-4">
           <h2 className="text-xl font-bold text-text-main">Recent Deposits</h2>
-          <p className="text-xs text-text-sub">
-            Last {recentDeposits.length} deposits (live)
-          </p>
+          <p className="text-xs text-text-sub">Last {recentDeposits.length} deposits (live)</p>
         </div>
 
         {recentDeposits.length === 0 ? (
@@ -361,7 +320,7 @@ export default function DashboardHome() {
                   <th className="px-3 py-2 font-medium">Time</th>
                   <th className="px-3 py-2 font-medium">Kiosk</th>
                   <th className="px-3 py-2 font-medium">User</th>
-                  <th className="px-3 py-2 font-medium text-right">Volume</th>
+                  <th className="px-3 py-2 font-medium text-right">Weight (kg)</th>
                 </tr>
               </thead>
               <tbody>
@@ -370,17 +329,12 @@ export default function DashboardHome() {
                     <td className="px-3 py-2 text-sm text-text-main">
                       {d.timestamp ? d.timestamp.toLocaleString('en-GB') : '—'}
                     </td>
-
-                    <td className="px-3 py-2 text-sm text-text-main">
-                      {d.kioskName}
-                    </td>
-
+                    <td className="px-3 py-2 text-sm text-text-main">{d.kioskName}</td>
                     <td className="px-3 py-2 text-sm text-text-sub">
                       {d.userId.length > 12 ? d.userId.slice(0, 12) + '…' : d.userId}
                     </td>
-
                     <td className="px-3 py-2 text-right font-semibold text-primary">
-                      {d.volumeLiters} L
+                      {Number(d.weightKg || 0).toFixed(3)} kg
                     </td>
                   </tr>
                 ))}
@@ -392,12 +346,9 @@ export default function DashboardHome() {
 
       {/* System Status */}
       <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-        <h2 className="text-xl font-bold text-text-main mb-4">
-          System Status
-        </h2>
+        <h2 className="text-xl font-bold text-text-main mb-4">System Status</h2>
         <p className="text-text-sub text-sm">
-          The system is active. Kiosk fill levels are being monitored in
-          real-time.
+          The system is active. Kiosk fill levels are being monitored in real-time.
         </p>
       </div>
     </div>
@@ -414,9 +365,7 @@ function StatCard({ icon, label, value, color }) {
         <p className="text-text-sub text-sm font-medium mb-1">{label}</p>
         <h3 className="text-2xl font-bold text-text-main">{value}</h3>
       </div>
-      <div
-        className={`w-12 h-12 rounded-xl ${color} bg-opacity-10 flex items-center justify-center text-2xl`}
-      >
+      <div className={`w-12 h-12 rounded-xl ${color} bg-opacity-10 flex items-center justify-center text-2xl`}>
         {icon}
       </div>
     </div>

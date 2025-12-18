@@ -1,3 +1,4 @@
+// UsersPage.js
 import React, { useEffect, useState } from 'react';
 import { collection, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -5,25 +6,24 @@ import { db } from '../firebase';
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
 
-  // DEFAULT: sort by VOLUME (highest first)
-  const [sortConfig, setSortConfig] = useState({ key: 'volume', direction: 'desc' });
+  // DEFAULT: sort by WEIGHT (highest first)
+  const [sortConfig, setSortConfig] = useState({ key: 'weight', direction: 'desc' });
 
   useEffect(() => {
     const q = query(
       collection(db, 'users'),
       where('role', '==', 'user'),
-      orderBy('createdAt', 'desc') // Firestore order doesn't matter much; we re-sort on client
+      orderBy('createdAt', 'desc')
     );
-    
+
     const unsub = onSnapshot(q, (snap) => {
       const userList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       setUsers(userList);
     });
-    
+
     return () => unsub();
   }, []);
 
-  // --- SORTING LOGIC ---
   const handleSort = (key) => {
     let direction = 'desc';
     if (sortConfig.key === key && sortConfig.direction === 'desc') {
@@ -35,7 +35,7 @@ export default function UsersPage() {
   const sortedUsers = [...users].sort((a, b) => {
     const getVal = (user, key) => {
       if (key === 'deposits') return user.depositCount || 0;
-      if (key === 'volume')   return user.totalRecycled || 0;
+      if (key === 'weight')   return user.totalRecycled || 0; // grams
       if (key === 'joined')   return user.createdAt?.seconds || 0;
       return 0;
     };
@@ -61,7 +61,7 @@ export default function UsersPage() {
           <h2 className="text-3xl font-bold text-text-main mb-1">Registered Users</h2>
           <p className="text-text-sub text-sm mt-2">View details of all app users</p>
         </div>
-        
+
         <div className="flex gap-4 items-center">
           <div className="bg-white px-4 py-2 rounded-xl border border-gray-100 text-sm font-medium text-text-main shadow-sm">
             Total: {users.length}
@@ -72,6 +72,7 @@ export default function UsersPage() {
       {/* SORT TOOLBAR */}
       <div className="flex justify-end gap-2 mb-4 text-sm">
         <span className="text-text-sub self-center mr-2">Sort by:</span>
+
         <button
           onClick={() => handleSort('deposits')}
           className={`px-3 py-1.5 rounded-lg border ${
@@ -82,16 +83,18 @@ export default function UsersPage() {
         >
           Deposits <SortIcon column="deposits" />
         </button>
+
         <button
-          onClick={() => handleSort('volume')}
+          onClick={() => handleSort('weight')}
           className={`px-3 py-1.5 rounded-lg border ${
-            sortConfig.key === 'volume'
+            sortConfig.key === 'weight'
               ? 'bg-white border-primary text-primary'
               : 'bg-transparent border-transparent text-text-sub hover:bg-white'
           }`}
         >
-          Volume <SortIcon column="volume" />
+          Weight <SortIcon column="weight" />
         </button>
+
         <button
           onClick={() => handleSort('joined')}
           className={`px-3 py-1.5 rounded-lg border ${
@@ -108,7 +111,7 @@ export default function UsersPage() {
       <div className="flex flex-col gap-4">
         {sortedUsers.map(u => {
           const weightGrams = u.totalRecycled || 0;
-          const volumeLiters = (weightGrams / 1000).toFixed(2);
+          const weightKg = (weightGrams / 1000).toFixed(2);
           const deposits = u.depositCount || 0;
 
           const email = u.email || "unknown@email.com";
@@ -126,20 +129,14 @@ export default function UsersPage() {
                 </div>
 
                 <div>
-                  {/* EMAIL */}
                   <h3 className="font-bold text-text-main">{email}</h3>
-
-                  {/* SPACING */}
                   <div className="h-1"></div>
-
-                  {/* USER ID */}
                   <p className="text-xs text-text-sub">
                     <span className="text-text-sub">User ID:</span>{' '}
                     <span className="break-all">{userId}</span>
                   </p>
                 </div>
               </div>
-
 
               {/* Stats */}
               <div className="flex gap-8 mt-4 md:mt-0 w-full md:w-auto border-t md:border-none pt-4 md:pt-0 border-gray-100">
@@ -148,9 +145,9 @@ export default function UsersPage() {
                   <p className="font-bold text-text-main">{deposits}</p>
                 </div>
 
-                <div className="text-center md:text-right w-24">
-                  <p className="text-xs text-text-sub uppercase font-bold">Volume</p>
-                  <p className="font-bold text-primary">{volumeLiters} L</p>
+                <div className="text-center md:text-right w-28">
+                  <p className="text-xs text-text-sub uppercase font-bold">Weight</p>
+                  <p className="font-bold text-primary">{weightKg} kg</p>
                 </div>
 
                 <div className="text-center md:text-right w-32 hidden sm:block">
