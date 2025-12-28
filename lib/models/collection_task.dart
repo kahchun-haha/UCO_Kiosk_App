@@ -6,11 +6,19 @@ class CollectionTask {
   final String kioskName;
   final String status;
   final int fillLevelAtCreation;
-  final String? agentId;
-  final String? agentUid;
+
+  // Assignment
+  final String? zone;
+  final String? agentId; // AGT-001
+  final String? agentUid; // Firebase UID
+
+  // Timestamps
   final Timestamp createdAt;
   final Timestamp? assignedAt;
+  final Timestamp? startedAt;
   final Timestamp? completedAt;
+
+  // Proof
   final String? proofPhotoUrl;
 
   CollectionTask({
@@ -19,10 +27,12 @@ class CollectionTask {
     required this.kioskName,
     required this.status,
     required this.fillLevelAtCreation,
+    this.zone,
     this.agentId,
     this.agentUid,
     required this.createdAt,
     this.assignedAt,
+    this.startedAt,
     this.completedAt,
     this.proofPhotoUrl,
   });
@@ -36,10 +46,12 @@ class CollectionTask {
       kioskName: data['kioskName'] ?? '',
       status: data['status'] ?? 'pending',
       fillLevelAtCreation: data['fillLevelAtCreation'] ?? 0,
-      agentId: data['agentId'] as String?,
-      agentUid: data['agentUid'] as String?,
+      zone: data['zone'],
+      agentId: data['agentId'],
+      agentUid: data['agentUid'],
       createdAt: data['createdAt'] ?? Timestamp.now(),
       assignedAt: data['assignedAt'],
+      startedAt: data['startedAt'],
       completedAt: data['completedAt'],
       proofPhotoUrl: data['proofPhotoUrl'],
     );

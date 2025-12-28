@@ -1,7 +1,11 @@
+// lib/screens/kiosk_list_screen.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+// ✅ Map screen
+import 'package:uco_kiosk_app/screens/kiosk_map_screen.dart';
 
 enum SortMode { capacity, distance }
 
@@ -39,9 +43,7 @@ class _KioskListScreenState extends State<KioskListScreen> {
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        setState(() {
-          _locationError = 'Location services are disabled.';
-        });
+        setState(() => _locationError = 'Location services are disabled.');
         return;
       }
 
@@ -49,17 +51,13 @@ class _KioskListScreenState extends State<KioskListScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          setState(() {
-            _locationError = 'Location permission denied.';
-          });
+          setState(() => _locationError = 'Location permission denied.');
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        setState(() {
-          _locationError = 'Location permission permanently denied.';
-        });
+        setState(() => _locationError = 'Location permission permanently denied.');
         return;
       }
 
@@ -71,13 +69,9 @@ class _KioskListScreenState extends State<KioskListScreen> {
         _currentPosition = pos;
       });
     } catch (e) {
-      setState(() {
-        _locationError = 'Failed to get location.';
-      });
+      setState(() => _locationError = 'Failed to get location.');
     } finally {
-      setState(() {
-        _isGettingLocation = false;
-      });
+      setState(() => _isGettingLocation = false);
     }
   }
 
@@ -85,10 +79,8 @@ class _KioskListScreenState extends State<KioskListScreen> {
   void _setSortMode(SortMode mode) {
     setState(() {
       if (_sortMode == mode) {
-        // tap same pill -> toggle direction
         _sortAsc = !_sortAsc;
       } else {
-        // switch mode -> reset to ascending (emptiest/nearest first)
         _sortMode = mode;
         _sortAsc = true;
       }
@@ -113,8 +105,7 @@ class _KioskListScreenState extends State<KioskListScreen> {
     );
   }
 
-  String get _filterLabel =>
-      _showOnlyAvailable ? 'Available only' : 'All kiosks';
+  String get _filterLabel => _showOnlyAvailable ? 'Available only' : 'All kiosks';
 
   // ----- HELPERS -----
   Future<void> _launchMaps(double lat, double lng) async {
@@ -131,6 +122,11 @@ class _KioskListScreenState extends State<KioskListScreen> {
       }
     } catch (e) {
       debugPrint('Error launching maps: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open Google Maps.')),
+        );
+      }
     }
   }
 
@@ -186,34 +182,141 @@ class _KioskListScreenState extends State<KioskListScreen> {
     if (!_showOnlyAvailable) {
       final pa = _statusPriority(a);
       final pb = _statusPriority(b);
-      if (pa != pb) {
-        return pa.compareTo(pb); // 0 top, 2 bottom
-      }
+      if (pa != pb) return pa.compareTo(pb);
     }
 
     int result;
 
     if (_sortMode == SortMode.capacity || _currentPosition == null) {
-      // Fallback to capacity if no location
       final fa = getFill(a);
       final fb = getFill(b);
-      result = fa.compareTo(fb); // emptiest → fullest
+      result = fa.compareTo(fb);
     } else {
-      // Distance sort
       final da = _distanceKmForKiosk(a) ?? double.infinity;
       final db = _distanceKmForKiosk(b) ?? double.infinity;
-      result = da.compareTo(db); // nearest → furthest
+      result = da.compareTo(db);
     }
 
     return _sortAsc ? result : -result;
   }
 
+  // ✅ NEW: more spacious header (the circled part)
+  Widget _buildTopToolbar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Row: info + (Sort/Filter indicator)
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 16, color: Color(0xFF9CA3AF)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    "Check capacity before visiting",
+                    style: TextStyle(
+                      color: Colors.grey.shade700,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (_isGettingLocation) ...[
+                  const SizedBox(width: 8),
+                  const SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ],
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.tune_rounded, size: 16, color: Color(0xFF6B7280)),
+                      SizedBox(width: 6),
+                      Text(
+                        "Sort / Filter",
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF6B7280),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // Wrap pills so they never squeeze
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _PillButton(
+                  label: "Capacity",
+                  icon: _sortIconFor(SortMode.capacity),
+                  isPrimary: _sortMode == SortMode.capacity,
+                  onTap: () => _setSortMode(SortMode.capacity),
+                ),
+                _PillButton(
+                  label: "Distance",
+                  icon: _sortIconFor(SortMode.distance),
+                  isPrimary: _sortMode == SortMode.distance,
+                  onTap: () => _setSortMode(SortMode.distance),
+                ),
+                _PillButton(
+                  label: _filterLabel,
+                  icon: const Icon(Icons.tune_rounded, size: 16, color: Color(0xFF6B7280)),
+                  isPrimary: !_showOnlyAvailable,
+                  onTap: _toggleFilter,
+                ),
+              ],
+            ),
+
+            if (_locationError != null && _sortMode == SortMode.distance) ...[
+              const SizedBox(height: 8),
+              Text(
+                _locationError!,
+                style: const TextStyle(fontSize: 11, color: Colors.redAccent),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // same as history screen
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF8F9FA), // match scaffold
+        backgroundColor: const Color(0xFFF8F9FA),
         elevation: 0,
         centerTitle: true,
         leading: IconButton(
@@ -232,105 +335,46 @@ class _KioskListScreenState extends State<KioskListScreen> {
             fontSize: 20,
           ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 10),
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const KioskMapScreen()),
+                );
+              },
+              icon: const Icon(Icons.map_rounded, size: 18, color: Color(0xFF2563EB)),
+              label: const Text(
+                "Map",
+                style: TextStyle(
+                  color: Color(0xFF2563EB),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(999),
+                  side: const BorderSide(color: Color(0xFF2563EB)),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
       body: Column(
         children: [
-          // HEADER ROW: info + "Sort / Filter" label
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline,
-                        size: 16,
-                        color: Colors.grey,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          "Check capacity before visiting",
-                          style: TextStyle(
-                            color: Colors.grey[600],
-                            fontSize: 12,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                const Text(
-                  "Sort / Filter",
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          // ROW WITH THE THREE PILLS
-          // ROW WITH THE THREE PILLS (right aligned)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _PillButton(
-                      label: "Capacity",
-                      icon: _sortIconFor(SortMode.capacity),
-                      isPrimary: _sortMode == SortMode.capacity,
-                      onTap: () => _setSortMode(SortMode.capacity),
-                    ),
-                    const SizedBox(width: 8),
-                    _PillButton(
-                      label: "Distance",
-                      icon: _sortIconFor(SortMode.distance),
-                      isPrimary: _sortMode == SortMode.distance,
-                      onTap: () => _setSortMode(SortMode.distance),
-                    ),
-                    const SizedBox(width: 8),
-                    _PillButton(
-                      label: _filterLabel,
-                      icon: const Icon(
-                        Icons.tune_rounded,
-                        size: 16,
-                        color: Color(0xFF6B7280),
-                      ),
-                      isPrimary: !_showOnlyAvailable,
-                      onTap: _toggleFilter,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          if (_locationError != null && _sortMode == SortMode.distance)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16.0),
-              child: Text(
-                _locationError!,
-                style: const TextStyle(fontSize: 11, color: Colors.redAccent),
-              ),
-            ),
+          // ✅ NEW spacious header (replaces your old packed header)
+          _buildTopToolbar(),
 
           // List
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream:
-                  FirebaseFirestore.instance.collection('kiosks').snapshots(),
+              stream: FirebaseFirestore.instance.collection('kiosks').snapshots(),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
@@ -340,31 +384,27 @@ class _KioskListScreenState extends State<KioskListScreen> {
                   return _buildEmptyState();
                 }
 
-                var kiosks =
-                    snapshot.data!.docs
-                        .map(
-                          (d) => {
-                            ...(d.data() as Map<String, dynamic>),
-                            'id': d.id,
-                          },
-                        )
-                        .toList();
+                var kiosks = snapshot.data!.docs
+                    .map(
+                      (d) => {
+                        ...(d.data() as Map<String, dynamic>),
+                        'id': d.id,
+                      },
+                    )
+                    .toList();
 
                 // Filter if needed
                 if (_showOnlyAvailable) {
-                  kiosks =
-                      kiosks.where((k) {
-                        final status =
-                            (k['status'] ?? '').toString().toLowerCase();
-                        final fill =
-                            (k['fillLevel'] is num)
-                                ? (k['fillLevel'] as num).toDouble()
-                                : 0.0;
+                  kiosks = kiosks.where((k) {
+                    final status = (k['status'] ?? '').toString().toLowerCase();
+                    final fill = (k['fillLevel'] is num)
+                        ? (k['fillLevel'] as num).toDouble()
+                        : 0.0;
 
-                        final isOnline = status == 'online';
-                        final isFull = fill >= 80;
-                        return isOnline && !isFull;
-                      }).toList();
+                    final isOnline = status == 'online';
+                    final isFull = fill >= 80;
+                    return isOnline && !isFull;
+                  }).toList();
                 }
 
                 if (kiosks.isEmpty) {
@@ -372,11 +412,7 @@ class _KioskListScreenState extends State<KioskListScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          Icons.map_outlined,
-                          size: 64,
-                          color: Colors.grey.shade300,
-                        ),
+                        Icon(Icons.map_outlined, size: 64, color: Colors.grey.shade300),
                         const SizedBox(height: 16),
                         Text(
                           _showOnlyAvailable
@@ -408,7 +444,7 @@ class _KioskListScreenState extends State<KioskListScreen> {
                   separatorBuilder: (_, __) => const SizedBox(height: 16),
                   itemBuilder: (context, index) {
                     final kiosk = kiosks[index];
-                    return _buildKioskCard(kiosk);
+                    return _buildKioskCard(kiosk); // ✅ original card UI
                   },
                 );
               },
@@ -419,22 +455,19 @@ class _KioskListScreenState extends State<KioskListScreen> {
     );
   }
 
+  // ✅ ORIGINAL card UI (kept for clarity)
   Widget _buildKioskCard(Map<String, dynamic> kiosk) {
     final String name = kiosk['name'] ?? 'Unknown Kiosk';
     final String address = kiosk['address'] ?? 'No address provided';
     final String status = kiosk['status'] ?? 'Offline';
 
     final double fillLevel =
-        (kiosk['fillLevel'] is num)
-            ? (kiosk['fillLevel'] as num).toDouble()
-            : 0.0;
+        (kiosk['fillLevel'] is num) ? (kiosk['fillLevel'] as num).toDouble() : 0.0;
 
     final double? lat =
         kiosk['latitude'] is num ? (kiosk['latitude'] as num).toDouble() : null;
     final double? lng =
-        kiosk['longitude'] is num
-            ? (kiosk['longitude'] as num).toDouble()
-            : null;
+        kiosk['longitude'] is num ? (kiosk['longitude'] as num).toDouble() : null;
 
     final Color statusColor = _getStatusColor(status, fillLevel);
     final String statusText = _getStatusText(status, fillLevel);
@@ -571,10 +604,7 @@ class _KioskListScreenState extends State<KioskListScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
@@ -615,10 +645,7 @@ class _KioskListScreenState extends State<KioskListScreen> {
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                     ),
                     icon: const Icon(Icons.directions, size: 18),
                     label: const Text(
@@ -663,7 +690,7 @@ class _KioskListScreenState extends State<KioskListScreen> {
   }
 }
 
-// Generic pill button
+// Generic pill button (same style)
 class _PillButton extends StatelessWidget {
   final String label;
   final Widget icon;
@@ -679,7 +706,7 @@ class _PillButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primaryColor = const Color(0xFF2563EB);
+    const primaryColor = Color(0xFF2563EB);
 
     return InkWell(
       borderRadius: BorderRadius.circular(999),
@@ -694,12 +721,13 @@ class _PillButton extends StatelessWidget {
           ),
         ),
         child: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               label,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w500,
+                fontWeight: FontWeight.w600,
                 color: isPrimary ? primaryColor : const Color(0xFF6B7280),
               ),
             ),

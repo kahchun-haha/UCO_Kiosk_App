@@ -11,6 +11,10 @@ import {
 import { db, createAgentCallable, deleteUserCallable } from '../firebase';
 
 const ZONES = ['Zone A', 'Zone B', 'Zone C'];
+const SHIFT_TYPES = [
+  { value: 'weekday', label: 'Weekday (Mon–Thu)' },
+  { value: 'weekend', label: 'Weekend (Fri–Sun)' },
+];
 
 export default function AgentsPage() {
   const [agents, setAgents] = useState([]);
@@ -172,7 +176,8 @@ export default function AgentsPage() {
                   <div className="flex gap-3 text-xs font-mono mt-1 text-gray-400">
                     <span>Agent ID: {a.agentId || '—'}</span>
                     <span>•</span>
-                    <span>Zone: {a.region || 'Unassigned'}</span>
+                    <span>Zone: {a.zone || 'Unassigned'}</span>
+                    <span>Shift: {a.shiftType || '—'}</span>
                   </div>
                 </div>
               </div>
@@ -273,7 +278,8 @@ function AgentFormModal({
     email: initialData.email || '',
     password: '',
     phone: initialData.phone || '',
-    region: initialData.region || '',
+    zone: initialData.zone || '',
+    shiftType: initialData.shiftType || '',
   });
 
   const handleChange = (e) =>
@@ -282,14 +288,15 @@ function AgentFormModal({
   const handleSubmit = () => {
     if (isSubmitting) return;
     if (!form.name) return alert('Name is required');
-    if (!form.region) return alert('Please select a zone.');
+    if (!form.zone) return alert('Please select a zone.');
+    if (!form.shiftType) return alert('Please select shift (weekday/weekend).');
     if (isCreate && (!form.email || !form.password)) {
       return alert('Email & Password required');
     }
 
     const payload = isCreate
       ? form
-      : { name: form.name, phone: form.phone, region: form.region };
+      : { name: form.name, phone: form.phone, zone: form.zone, shiftType: form.shiftType };
 
     onSubmit(payload);
   };
@@ -360,8 +367,8 @@ function AgentFormModal({
               Operational Zone
             </div>
             <select
-              name="region"
-              value={form.region}
+              name="zone"
+              value={form.zone}
               onChange={handleChange}
               className={`${inputClass} appearance-none`}
               disabled={isSubmitting}
@@ -370,6 +377,26 @@ function AgentFormModal({
               {ZONES.map((z) => (
                 <option key={z} value={z}>
                   {z}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <div className="text-xs font-bold text-gray-400 uppercase mb-1">
+              Shift Type
+            </div>
+            <select
+              name="shiftType"
+              value={form.shiftType}
+              onChange={handleChange}
+              className={`${inputClass} appearance-none`}
+              disabled={isSubmitting}
+            >
+              <option value="">Select shift…</option>
+              {SHIFT_TYPES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
                 </option>
               ))}
             </select>

@@ -50,6 +50,7 @@ dependencies:
   firebase_storage: ^11.7.7
   image_picker: ^1.1.0
   cloud_functions: ^4.7.6
+  google_maps_flutter: ^2.5.3
 
 dependency_overrides:
   vector_math: ^2.2.0

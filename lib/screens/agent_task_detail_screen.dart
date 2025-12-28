@@ -23,6 +23,20 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
   static const _text = Color(0xFF1F2937);
   static const _sub = Color(0xFF9CA3AF);
 
+  bool get _isAssignedToMe => _task?.agentUid == _agentUid;
+  bool get _canStart =>
+      _task != null && _isAssignedToMe && _task!.status == 'pending';
+  bool get _canUpload =>
+      _task != null &&
+      _isAssignedToMe &&
+      _task!.status == 'in_progress' &&
+      _task!.startedAt != null;
+  bool get _canComplete =>
+      _task != null &&
+      _isAssignedToMe &&
+      _task!.status == 'in_progress' &&
+      _task!.proofPhotoUrl != null;
+
   CollectionTask? _task;
   bool _loading = true;
   bool _updating = false;
@@ -95,6 +109,15 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
   }
 
   Future<void> _updateStatus(String newStatus) async {
+    // ✅ NEW: must be assigned to start/complete
+    if ((newStatus == 'in_progress' || newStatus == 'completed') &&
+        !_isAssignedToMe) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This task is not assigned to you.')),
+      );
+      return;
+    }
+
     if (_task == null) return;
 
     if (_agentPublicId == null || _agentPublicId!.isEmpty) {
@@ -127,14 +150,7 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
       };
 
       if (newStatus == 'in_progress') {
-        if (_task!.assignedAt == null) {
-          updates['assignedAt'] = FieldValue.serverTimestamp();
-        }
         updates['startedAt'] = FieldValue.serverTimestamp();
-
-        // ✅ ENSURE CORRECT IDENTITIES
-        updates['agentId'] = _agentPublicId; // AGT-001
-        updates['agentUid'] = _agentUid; // Firebase UID
       }
 
       if (newStatus == 'completed') {
@@ -162,6 +178,16 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
   }
 
   Future<void> _pickAndUploadPhoto() async {
+    // ✅ NEW: must start before upload
+    if (!_canUpload) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Start collection before uploading proof.'),
+        ),
+      );
+      return;
+    }
+
     if (_task == null) return;
 
     final picker = ImagePicker();
@@ -218,59 +244,56 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
   }) async {
     final res = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF1F2937),
-          ),
-        ),
-        content: Text(
-          msg,
-          style: const TextStyle(
-            fontSize: 16,
-            color: Color(0xFF6B7280),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text(
-              'Cancel',
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontWeight: FontWeight.w600,
+      builder:
+          (context) => AlertDialog(
+            backgroundColor: Colors.white,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
+            title: Text(
+              title,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF1F2937),
               ),
             ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: confirmColor,
-              foregroundColor: Colors.white,
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+            content: Text(
+              msg,
+              style: const TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text(
+                  'Cancel',
+                  style: TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-            ),
-            child: Text(
-              confirmText,
-              style: const TextStyle(fontWeight: FontWeight.w600),
-            ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: confirmColor,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  confirmText,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
 
     return res ?? false;
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -423,12 +446,19 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
   }
 
   Widget _buildUploadButton() {
+    final task = _task!;
+    final enabled = _canUpload && !_uploadingPhoto;
+
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _uploadingPhoto ? null : _pickAndUploadPhoto,
+        onPressed: enabled ? _pickAndUploadPhoto : null,
         icon: const Icon(Icons.camera_alt_rounded),
-        label: Text(_uploadingPhoto ? 'Uploading...' : 'Upload Proof'),
+        label: Text(
+          _uploadingPhoto
+              ? 'Uploading...'
+              : (_canUpload ? 'Upload Proof' : 'Upload Proof (Start first)'),
+        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.white,
           foregroundColor: _text,
@@ -445,11 +475,12 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
 
   Widget _buildActionButton(CollectionTask task) {
     if (task.status == 'pending') {
+      final enabled = _canStart && !_updating;
+
       return ElevatedButton(
         onPressed:
-            _updating
-                ? null
-                : () async {
+            enabled
+                ? () async {
                   if (await _confirm(
                     'Start Collection',
                     'Start this task now?',
@@ -458,18 +489,26 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
                   )) {
                     _updateStatus('in_progress');
                   }
-                },
+                }
+                : null,
         style: ElevatedButton.styleFrom(backgroundColor: _primary),
-        child: Text(_updating ? 'Updating...' : 'Start Collection'),
+        child: Text(
+          _updating
+              ? 'Updating...'
+              : (_canStart
+                  ? 'Start Collection'
+                  : 'Start (Assigned agent only)'),
+        ),
       );
     }
 
     if (task.status == 'in_progress') {
+      final enabled = _canComplete && !_updating;
+
       return ElevatedButton(
         onPressed:
-            _updating
-                ? null
-                : () async {
+            enabled
+                ? () async {
                   if (await _confirm(
                     'Complete Task',
                     'Mark task as completed?',
@@ -478,9 +517,16 @@ class _AgentTaskDetailScreenState extends State<AgentTaskDetailScreen> {
                   )) {
                     _updateStatus('completed');
                   }
-                },
+                }
+                : null,
         style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-        child: Text(_updating ? 'Updating...' : 'Mark as Collected'),
+        child: Text(
+          _updating
+              ? 'Updating...'
+              : (_canComplete
+                  ? 'Mark as Collected'
+                  : 'Complete (Upload proof first)'),
+        ),
       );
     }
 

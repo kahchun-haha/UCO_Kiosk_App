@@ -26,3 +26,4 @@ export const createAgentCallable = httpsCallable(functions, 'createAgent');
 export const createAdminCallable = httpsCallable(functions, 'createAdmin');
 export const deleteUserCallable = httpsCallable(functions, 'deleteUser');
 export const sendMonthlyImpactEmailsManualCallable = httpsCallable(functions, "sendMonthlyImpactEmailsManual");
+export const reassignPendingTasksByShiftManualCallable = httpsCallable(functions, "reassignPendingTasksByShiftManual");

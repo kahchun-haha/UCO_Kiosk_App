@@ -69,11 +69,10 @@ class NotificationService {
     final enabled = await isPushEnabled();
     if (!enabled) return;
 
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-      'kiosk_status_channel',
-      'Kiosk Status',
-      channelDescription: 'Notifications for kiosk status updates',
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'collection_tasks_channel',
+      'Collection Tasks',
+      channelDescription: 'Notifications for newly assigned collection tasks',
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,

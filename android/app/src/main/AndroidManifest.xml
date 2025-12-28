@@ -7,6 +7,10 @@
         android:label="uco_kiosk_app"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
+        <meta-data android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyC732wwUny4vlPeq9n2Knv5DofdDw5yPMM"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

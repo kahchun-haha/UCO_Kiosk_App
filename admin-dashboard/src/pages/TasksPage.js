@@ -11,37 +11,76 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { db } from '../firebase';
+import { reassignPendingTasksByShiftManualCallable } from "../firebase";
+
+const runShiftReassignNow = async () => {
+  try {
+    const res = await reassignPendingTasksByShiftManualCallable();
+    console.log("Manual shift reassign result:", res.data);
+    alert(
+      `Done ✅\nShiftType=${res.data.targetShiftType}\nReassigned=${res.data.reassigned}`
+    );
+  } catch (e) {
+    console.error(e);
+    alert("Failed: " + (e.message || "Unknown error"));
+  }
+};
+
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState([]);
   const [agents, setAgents] = useState([]);
   const [filter, setFilter] = useState('active'); // 'active' | 'pending' | 'in_progress' | 'completed' | 'all'
-  const [assigningTask, setAssigningTask] = useState(null); // task object for modal
-  const [processingId, setProcessingId] = useState(null); // which task is updating
+  const [assigningTask, setAssigningTask] = useState(null);
+  const [processingId, setProcessingId] = useState(null);
 
   // --- Load tasks (live) ---
   useEffect(() => {
-    const q = query(
-      collection(db, 'collectionTasks'),
-      orderBy('createdAt', 'desc')
-    );
+    const q = query(collection(db, 'collectionTasks'), orderBy('createdAt', 'desc'));
     const unsub = onSnapshot(q, (snap) => {
       setTasks(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     });
     return () => unsub();
   }, []);
 
-  // --- Load agents for assignment dropdown ---
+  // --- Load agents for assignment dropdown (ACTIVE ONLY) ✅ + fallback ✅ ---
   useEffect(() => {
-    const q = query(
+    const qActive = query(
+      collection(db, 'users'),
+      where('role', '==', 'agent'),
+      where('active', '==', true),
+      orderBy('createdAt', 'desc')
+    );
+
+    const qFallback = query(
       collection(db, 'users'),
       where('role', '==', 'agent'),
       orderBy('createdAt', 'desc')
     );
-    const unsub = onSnapshot(q, (snap) => {
-      setAgents(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
-    });
-    return () => unsub();
+
+    let fallbackUnsub = null;
+
+    const unsub = onSnapshot(
+      qActive,
+      (snap) => {
+        setAgents(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      },
+      (err) => {
+        console.error('Agents query (active-only) failed:', err);
+
+        // attach fallback listener only once
+        if (!fallbackUnsub) {
+          fallbackUnsub = onSnapshot(qFallback, (snap) => {
+            setAgents(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+          });
+        }
+      }
+    );
+
+    return () => {
+      unsub();
+      if (fallbackUnsub) fallbackUnsub();
+    };
   }, []);
 
   // --- Filtering + some quick counts ---
@@ -62,12 +101,12 @@ export default function TasksPage() {
       list = list.filter((t) => t.status === 'in_progress');
     } else if (filter === 'completed') {
       list = list.filter((t) => t.status === 'completed');
-    }
+    } // 'all' => no filter
 
     return { filteredTasks: list, stats };
   }, [tasks, filter]);
 
-  // --- Helpers for status display ---
+  // --- Helpers ---
   const statusDisplay = (status) => {
     switch (status) {
       case 'pending':
@@ -125,15 +164,17 @@ export default function TasksPage() {
       {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-6">
         <div>
-          <h2 className="text-3xl font-bold text-text-main mb-1">
-            Collection Tasks
-          </h2>
-          <p className="text-text-sub text-sm mt-1">
-            Monitor kiosk pick-ups and manage assignments.
-          </p>
+          <h2 className="text-3xl font-bold text-text-main mb-1">Collection Tasks</h2>
+          <p className="text-text-sub text-sm mt-1">Monitor kiosk pick-ups and manage assignments.</p>
         </div>
+        <button
+  onClick={runShiftReassignNow}
+  className="px-4 py-2 rounded-xl bg-dark text-white text-sm font-semibold"
+>
+  Run Shift Reassign (Manual)
+</button>
 
-        {/* STATUS SUMMARY PILLS */}
+        {/* STATUS SUMMARY */}
         <div className="flex flex-wrap gap-2 text-xs md:text-sm">
           <SummaryPill label="Total" value={stats.total} />
           <SummaryPill label="Pending" value={stats.pending} color="bg-yellow-50 text-yellow-700" />
@@ -162,38 +203,34 @@ export default function TasksPage() {
             <div
               key={t.id}
               className={`bg-white p-5 rounded-2xl border shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-4 transition-all ${
-                isCompleted
-                  ? 'border-gray-100 hover:border-gray-200'
-                  : 'border-gray-100 hover:border-primary/30'
+                isCompleted ? 'border-gray-100 hover:border-gray-200' : 'border-gray-100 hover:border-primary/30'
               }`}
             >
-              {/* LEFT: MAIN INFO */}
+              {/* LEFT */}
               <div className="flex items-start gap-4 flex-1">
-                <div
-                  className={`p-3 rounded-xl text-2xl ${
-                    isCompleted ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-500'
-                  }`}
-                >
+                <div className={`p-3 rounded-xl text-2xl ${isCompleted ? 'bg-green-50 text-green-600' : 'bg-orange-50 text-orange-500'}`}>
                   {isCompleted ? '✅' : '🚛'}
                 </div>
 
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3
-                      className={`font-bold text-lg ${
-                        isCompleted ? 'text-gray-600' : 'text-text-main'
-                      }`}
-                    >
+                    <h3 className={`font-bold text-lg ${isCompleted ? 'text-gray-600' : 'text-text-main'}`}>
                       {t.kioskName || t.kioskId || 'Unknown kiosk'}
                     </h3>
-                    <span
-                      className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${statusInfo.className}`}
-                    >
+
+                    <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${statusInfo.className}`}>
                       {statusInfo.label.toUpperCase()}
                     </span>
+
                     {typeof t.fillLevelAtCreation === 'number' && (
                       <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/5 text-primary font-semibold">
                         {t.fillLevelAtCreation}% full when created
+                      </span>
+                    )}
+
+                    {t.zone && (
+                      <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-50 text-gray-600 font-semibold">
+                        {t.zone}
                       </span>
                     )}
                   </div>
@@ -202,41 +239,20 @@ export default function TasksPage() {
                     Task ID: <span className="break-all">{t.id}</span>
                   </p>
 
-                  {/* timestamps */}
                   <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-text-sub mt-2">
-                    <span>
-                      <span className="font-semibold">Created:</span>{' '}
-                      {formatDateTime(t.createdAt)}
-                    </span>
-                    {t.assignedAt && (
-                      <span>
-                        <span className="font-semibold">Assigned:</span>{' '}
-                        {formatDateTime(t.assignedAt)}
-                      </span>
-                    )}
-                    {t.completedAt && (
-                      <span>
-                        <span className="font-semibold">Completed:</span>{' '}
-                        {formatDateTime(t.completedAt)}
-                      </span>
-                    )}
+                    <span><span className="font-semibold">Created:</span> {formatDateTime(t.createdAt)}</span>
+                    {t.assignedAt && <span><span className="font-semibold">Assigned:</span> {formatDateTime(t.assignedAt)}</span>}
+                    {t.completedAt && <span><span className="font-semibold">Completed:</span> {formatDateTime(t.completedAt)}</span>}
                   </div>
 
-                  {/* agent info */}
                   <div className="mt-2 text-xs text-text-sub flex flex-wrap gap-4">
                     <span>
                       <span className="font-semibold text-text-main">Agent: </span>
-                      {t.agentName
-                        ? `${t.agentName} ${t.agentId ? `( ${t.agentId} )` : ''}`
-                        : t.agentId
-                        ? t.agentId
-                        : 'Unassigned'}
+                      {t.agentName ? `${t.agentName} ${t.agentId ? `( ${t.agentId} )` : ''}` : t.agentId ? t.agentId : 'Unassigned'}
                     </span>
                     {t.completionNotes && (
                       <span className="truncate max-w-xs">
-                        <span className="font-semibold text-text-main">
-                          Notes:{' '}
-                        </span>
+                        <span className="font-semibold text-text-main">Notes: </span>
                         {t.completionNotes}
                       </span>
                     )}
@@ -244,9 +260,8 @@ export default function TasksPage() {
                 </div>
               </div>
 
-              {/* RIGHT: ACTIONS */}
+              {/* RIGHT */}
               <div className="flex flex-col items-stretch gap-2 md:w-56">
-                {/* Proof photo */}
                 {hasProof && (
                   <button
                     onClick={() => handleViewProof(t)}
@@ -257,8 +272,7 @@ export default function TasksPage() {
                   </button>
                 )}
 
-                {/* Assign / Reassign */}
-                {t.status === 'pending' || t.status === 'in_progress' ? (
+                {(t.status === 'pending' || t.status === 'in_progress') ? (
                   <button
                     onClick={() => handleOpenAssignModal(t)}
                     className="px-4 py-2 text-xs md:text-sm font-semibold rounded-xl bg-dark text-white hover:bg-dark-light shadow-md shadow-dark/20 transition-all flex items-center justify-center gap-2"
@@ -268,7 +282,6 @@ export default function TasksPage() {
                   </button>
                 ) : null}
 
-                {/* Force complete */}
                 {!isCompleted && (
                   <button
                     onClick={() => handleForceComplete(t)}
@@ -302,19 +315,16 @@ export default function TasksPage() {
   );
 }
 
-/* ----------------- Small helper components ------------------ */
+/* ---------------- Helpers ---------------- */
 
 function SummaryPill({ label, value, color = 'bg-gray-50 text-text-sub' }) {
   return (
-    <div
-      className={`px-3 py-2 rounded-xl border border-gray-100 text-xs md:text-sm flex items-center gap-2 bg-white shadow-sm`}
-    >
-      <span className={`w-2 h-2 rounded-full ${color.includes('green')
-          ? 'bg-green-500'
-          : color.includes('yellow')
-          ? 'bg-yellow-400'
-          : color.includes('blue')
-          ? 'bg-blue-500'
+    <div className="px-3 py-2 rounded-xl border border-gray-100 text-xs md:text-sm flex items-center gap-2 bg-white shadow-sm">
+      <span
+        className={`w-2 h-2 rounded-full ${
+          color.includes('green') ? 'bg-green-500'
+          : color.includes('yellow') ? 'bg-yellow-400'
+          : color.includes('blue') ? 'bg-blue-500'
           : 'bg-gray-300'
         }`}
       />
@@ -340,32 +350,55 @@ function FilterChip({ label, value, current, onChange }) {
   );
 }
 
-/* ----------------- Assign Agent Modal ------------------ */
+/* ---------------- Assign Modal ---------------- */
 
 function AssignAgentModal({ task, agents, onClose }) {
-  const [selectedUid, setSelectedUid] = useState(task.agentUid || '');
+  const [selectedUid, setSelectedUid] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const filteredAgents = agents.filter(
+    (a) => a.active === true && a.zone === task.zone
+  );
+
+  // ✅ keep selection valid (active + same zone). No eslint-disable needed.
+  useEffect(() => {
+    const stillValid =
+      task.agentUid &&
+      agents.some(
+        (a) =>
+          a.active === true &&
+          a.zone === task.zone &&
+          a.id === task.agentUid
+      );
+
+    setSelectedUid(stillValid ? task.agentUid : '');
+  }, [task.agentUid, task.zone, agents]);
+
   const handleSave = async () => {
+    if (!task.zone) {
+      alert('This task has no zone. Please set kiosk/task zone first.');
+      return;
+    }
     if (!selectedUid) {
       alert('Please select an agent.');
       return;
     }
-    const agent = agents.find((a) => a.id === selectedUid);
+
+    const agent = filteredAgents.find((a) => a.id === selectedUid);
     if (!agent) {
-      alert('Agent not found.');
+      alert('Agent not found (inactive or zone mismatch).');
       return;
     }
 
     setSaving(true);
     try {
       await updateDoc(doc(db, 'collectionTasks', task.id), {
-        agentUid: agent.id,                 // ✅ Firebase UID
-        agentId: agent.agentId || null,     // ✅ AGT-006
+        agentUid: agent.id,
+        agentId: agent.agentId || null,
         agentName: agent.name || agent.email || '',
         assignedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-        status: 'pending',                  // ✅ let agent start it
+        status: 'pending',
       });
       onClose();
     } catch (e) {
@@ -380,55 +413,49 @@ function AssignAgentModal({ task, agents, onClose }) {
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-dark/40 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg font-bold text-text-main">
-            Assign Agent
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-dark text-xl"
-          >
-            ✕
-          </button>
+          <h3 className="text-lg font-bold text-text-main">Assign Agent</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-dark text-xl">✕</button>
         </div>
 
+        <p className="text-sm text-text-sub mb-2">
+          Kiosk: <span className="font-semibold text-text-main">{task.kioskName || task.kioskId}</span>
+        </p>
         <p className="text-sm text-text-sub mb-4">
-          Kiosk:{' '}
-          <span className="font-semibold text-text-main">
-            {task.kioskName || task.kioskId}
-          </span>
+          Zone: <span className="font-semibold text-text-main">{task.zone || '—'}</span>
         </p>
 
         <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
-          Select Agent
+          Select Agent (Active + same zone)
         </label>
+
         <select
           value={selectedUid}
           onChange={(e) => setSelectedUid(e.target.value)}
           className="w-full border border-gray-200 rounded-xl px-4 py-3 bg-gray-50 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          disabled={!task.zone}
         >
           <option value="">-- Choose an agent --</option>
-          {agents.map((a) => (
+          {filteredAgents.map((a) => (
             <option key={a.id} value={a.id}>
-              {a.name || a.email} {a.region ? `• ${a.region}` : ''}
+              {a.name || a.email} {a.agentId ? `( ${a.agentId} )` : ''} • {a.zone}
             </option>
           ))}
         </select>
 
-        {agents.length === 0 && (
+        {(!task.zone || filteredAgents.length === 0) && (
           <p className="mt-2 text-xs text-red-500">
-            No agents found. Create one in the Agents page first.
+            {!task.zone
+              ? 'This task has no zone. Set kiosk/task zone first.'
+              : `No active agents found for ${task.zone}. Enable or create one in Agents page.`}
           </p>
         )}
 
         <div className="flex justify-end gap-3 mt-6">
-          <button
-            className="px-4 py-2 rounded-xl text-sm text-text-sub hover:bg-gray-50"
-            onClick={onClose}
-          >
+          <button className="px-4 py-2 rounded-xl text-sm text-text-sub hover:bg-gray-50" onClick={onClose}>
             Cancel
           </button>
           <button
-            disabled={saving || agents.length === 0}
+            disabled={saving || !task.zone || filteredAgents.length === 0}
             onClick={handleSave}
             className="px-5 py-2 rounded-xl bg-dark text-white text-sm font-medium hover:bg-dark-light shadow-lg shadow-dark/20 disabled:opacity-60 disabled:cursor-not-allowed"
           >

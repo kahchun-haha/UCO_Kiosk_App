@@ -16,7 +16,11 @@ const {
 
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { initializeApp } = require("firebase-admin/app");
-const { getFirestore, FieldValue, Timestamp } = require("firebase-admin/firestore");
+const {
+  getFirestore,
+  FieldValue,
+  Timestamp,
+} = require("firebase-admin/firestore");
 const { getAuth } = require("firebase-admin/auth");
 const crypto = require("crypto");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
@@ -33,8 +37,11 @@ const REGION = "asia-southeast1";
 // ✅ Zones for agent assignment (must match your React dropdown)
 const ALLOWED_ZONES = ["Zone A", "Zone B", "Zone C"];
 
+// ✅ Shift types
+const ALLOWED_SHIFT_TYPES = ["weekday", "weekend"];
+
 // ===========================================
-// HELPERS
+// HELPERS (AUTH)
 // ===========================================
 async function getCallerRole(request) {
   if (!request.auth?.uid) return null;
@@ -56,7 +63,7 @@ async function assertAdmin(request) {
   }
 }
 
-// ✅ NEW: kiosk-only callable protection (or allow admin/superadmin for testing)
+// ✅ kiosk-only callable protection (or allow admin/superadmin for testing)
 async function assertKiosk(request) {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Login required.");
@@ -76,8 +83,76 @@ function assertZone(zone) {
   }
 }
 
+function assertShiftType(shiftType) {
+  if (!shiftType || !ALLOWED_SHIFT_TYPES.includes(shiftType)) {
+    throw new HttpsError(
+      "invalid-argument",
+      `Invalid shiftType. Allowed: ${ALLOWED_SHIFT_TYPES.join(", ")}`
+    );
+  }
+}
+
+async function getUserByUid(uid) {
+  const snap = await db.collection("users").doc(uid).get();
+  return snap.exists ? snap.data() : null;
+}
+
+// ===========================================
+// HELPERS (TIME / SHIFT)
+// Mon–Thu 9–18 = weekday
+// Fri–Sun 9–18 = weekend
+// If created AFTER 18:00, assign to NEXT day's shift
+// ===========================================
+const OFFSET_MS = 8 * 60 * 60 * 1000; // Asia/Kuala_Lumpur (no DST)
+
+function weekdayMon1(nowUtcMs) {
+  const kl = new Date(nowUtcMs + OFFSET_MS);
+  const d = kl.getUTCDay(); // 0=Sun
+  return d === 0 ? 7 : d;   // 1=Mon ... 7=Sun
+}
+
+function hourKL(nowUtcMs) {
+  return new Date(nowUtcMs + OFFSET_MS).getUTCHours(); // KL hour
+}
+
+// Returns "weekday" or "weekend" for assignment
+function getShiftTypeForAssignment(nowUtcMs) {
+  let w = weekdayMon1(nowUtcMs); // 1..7
+  const h = hourKL(nowUtcMs);
+
+  // After shift ends (18:00+), push assignment to next day
+  if (h >= 18) {
+    w = (w === 7) ? 1 : (w + 1);
+  }
+
+  // weekday: Mon(1)-Thu(4), weekend: Fri(5)-Sun(7)
+  return (w >= 5) ? "weekend" : "weekday";
+}
+
+// Pick the single duty agent for (zone + shiftType)
+// If multiple exist (shouldn't), we pick lowest agentId/uid for determinism.
+async function pickDutyAgentForZone(zone, shiftType) {
+  const snap = await db
+    .collection("users")
+    .where("role", "==", "agent")
+    .where("active", "==", true)
+    .where("zone", "==", zone)
+    .where("shiftType", "==", shiftType)
+    .get();
+
+  if (snap.empty) return null;
+
+  const agents = snap.docs.map((d) => ({
+    uid: d.id,
+    agentId: d.data()?.agentId || "",
+  }));
+
+  agents.sort((a, b) => (a.agentId || a.uid).localeCompare(b.agentId || b.uid));
+  return agents[0].uid;
+}
+
 /**
- * Generate sequential agent code like: AGT-000001
+ * Generate sequential agent code like: AGT-001
  * Requires Firestore doc: counters/agents { next: 1 }
  */
 async function generateAgentId() {
@@ -93,7 +168,6 @@ async function generateAgentId() {
     return `AGT-${String(next).padStart(3, "0")}`; // AGT-001
   });
 }
-
 
 // ===============================================================
 //  FUNCTION 1: Auto-create collection task + update lastEmptied
@@ -138,28 +212,49 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
 
     if (!crossedThreshold) return null;
 
-    // Prevent duplicate pending tasks
-    const pendingTasks = await db
+    // Prevent duplicate active tasks (pending OR in_progress)
+    const existing = await db
       .collection("collectionTasks")
       .where("kioskId", "==", kioskId)
-      .where("status", "==", "pending")
+      .where("status", "in", ["pending", "in_progress"])
       .get();
 
-    if (!pendingTasks.empty) {
-      console.log(`Kiosk ${kioskId} already has a pending task.`);
+    if (!existing.empty) {
+      console.log(`Kiosk ${kioskId} already has an active task.`);
       return null;
     }
 
     console.log(`Creating NEW collection task for kiosk ${kioskId}.`);
 
+    const zone = after.zone || null;
+
+    // ✅ Assign by Zone + Shift (NO round robin)
+    let agentUid = null;
+    let agentId = null;
+
+    if (zone) {
+      const shiftType = getShiftTypeForAssignment(Date.now());
+      agentUid = await pickDutyAgentForZone(zone, shiftType);
+
+      if (agentUid) {
+        const agentData = await getUserByUid(agentUid);
+        agentId = agentData?.agentId || null;
+      } else {
+        console.log(`No duty agent found for zone=${zone} shiftType=${shiftType}. Task will be unassigned.`);
+      }
+    }
+
     return db.collection("collectionTasks").add({
       kioskId,
       kioskName: after.name || after.location || "Unnamed Kiosk",
+      zone,
       status: "pending",
       createdAt: FieldValue.serverTimestamp(),
-      agentUid: null,
-      agentId: null,
-      assignedAt: null,
+
+      agentUid: agentUid || null,
+      agentId: agentId || null,
+      assignedAt: agentUid ? FieldValue.serverTimestamp() : null,
+
       startedAt: null,
       completedAt: null,
 
@@ -168,7 +263,10 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       proofPhotoUrl: null,
       proofUploadedAt: null,
 
-      // used by Function 6 to prevent double processing
+      // Optional audit for reassign
+      reassignedAt: null,
+      reassignedFromUid: null,
+
       postProcessedAt: null,
     });
   }
@@ -266,18 +364,19 @@ exports.createAdmin = onCall({ region: REGION }, async (request) => {
 });
 
 // ===============================================================
-//  FUNCTION 4: Securely Create Agent (admin-only) + AUTO agentCode
+//  FUNCTION 4: Securely Create Agent (admin-only) + AUTO agentId
+//  ✅ NEW: requires shiftType = "weekday" | "weekend"
 // ===============================================================
 exports.createAgent = onCall({ region: REGION }, async (request) => {
   await assertAdmin(request);
 
-  const { email, password, name, phone, region } = request.data || {};
+  const { email, password, name, phone, zone, shiftType } = request.data || {};
   if (!email || !password || !name) {
     throw new HttpsError("invalid-argument", "Missing email/password/name.");
   }
 
-  // ✅ Validate zone coming from your dropdown
-  assertZone(region);
+  assertZone(zone);
+  assertShiftType(shiftType);
 
   try {
     const agentId = await generateAgentId();
@@ -292,9 +391,10 @@ exports.createAgent = onCall({ region: REGION }, async (request) => {
       email,
       name,
       role: "agent",
-      agentId, // ✅ auto ID
+      agentId,
       phone: phone || "",
-      region, // ✅ stored as zone
+      zone,
+      shiftType, // ✅ IMPORTANT
       createdAt: FieldValue.serverTimestamp(),
       active: true,
       tasksCompleted: 0,
@@ -307,22 +407,18 @@ exports.createAgent = onCall({ region: REGION }, async (request) => {
     return { success: true, agentId, message: "Agent created successfully." };
   } catch (error) {
     console.error("Error creating agent:", error);
-      throw new HttpsError(
-    "internal",
-    "createAgent failed",
-    {
+    throw new HttpsError("internal", "createAgent failed", {
       originalMessage: error?.message || null,
       originalCode: error?.code || null,
       stack: error?.stack || null,
-    }
-  ); 
+    });
   }
 });
 
 // ===============================================================
 //  FUNCTION 5: Securely Delete User (admin-only)
 // ===============================================================
-exports.deleteUser  = onCall({ region: REGION }, async (request) => {
+exports.deleteUser = onCall({ region: REGION }, async (request) => {
   await assertAdmin(request);
 
   const { targetUid } = request.data || {};
@@ -342,7 +438,7 @@ exports.deleteUser  = onCall({ region: REGION }, async (request) => {
 });
 
 // ===============================================================
-//  FUNCTION 6 (BEST PRACTICE):
+//  FUNCTION 6:
 //  When a task becomes COMPLETED, server performs all side effects.
 // ===============================================================
 exports.onCollectionTaskStatusChange = onDocumentUpdated(
@@ -358,22 +454,16 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
     const taskId = event.params.taskId;
 
     if (!before || !after) return null;
-
-    // Only when status actually changes
     if (before.status === after.status) return null;
-
-    // Only when it becomes completed
     if (after.status !== "completed") return null;
-
-    // Prevent double processing
     if (after.postProcessedAt) {
       console.log(`Task ${taskId} already post-processed. Skipping.`);
       return null;
     }
 
     const kioskId = after.kioskId;
-    const agentUid = after.agentUid;   // ✅ Firebase UID
-    const agentId = after.agentId;     // optional, for logging only
+    const agentUid = after.agentUid;
+    const agentId = after.agentId;
 
     console.log(`Task ${taskId} marked completed. Post-processing...`);
 
@@ -535,7 +625,6 @@ exports.rebuildUserAggregates = onCall({ region: REGION }, async (request) => {
 
 // ===============================================================
 //  FUNCTION 9: Create time-limited QR session (user)
-//  App calls this to display QR token (NOT uid)
 // ===============================================================
 exports.createQrSession = onCall({ region: REGION }, async (request) => {
   if (!request.auth?.uid) {
@@ -543,21 +632,15 @@ exports.createQrSession = onCall({ region: REGION }, async (request) => {
   }
 
   const uid = request.auth.uid;
-
-  // 32-char random token
   const token = crypto.randomBytes(16).toString("hex");
-
   const expiresInSeconds = 60;
   const nowMs = Date.now();
   const expiresAt = Timestamp.fromMillis(nowMs + expiresInSeconds * 1000);
-
-  // ✅ NEW: expire any previous active sessions for this uid
   const activeSnap = await db
     .collection("qrSessions")
     .where("uid", "==", uid)
     .where("status", "==", "active")
     .get();
-
   const batch = db.batch();
 
   activeSnap.forEach((doc) => {
@@ -571,11 +654,10 @@ exports.createQrSession = onCall({ region: REGION }, async (request) => {
     );
   });
 
-  // create new active token
   const newRef = db.collection("qrSessions").doc(token);
   batch.set(newRef, {
     uid,
-    status: "active", // active | used | expired
+    status: "active",
     createdAt: FieldValue.serverTimestamp(),
     expiresAt,
     usedAt: null,
@@ -584,7 +666,6 @@ exports.createQrSession = onCall({ region: REGION }, async (request) => {
 
   await batch.commit();
 
-  // ✅ return expiresAtMs so app can do accurate countdown
   return {
     success: true,
     token,
@@ -595,7 +676,6 @@ exports.createQrSession = onCall({ region: REGION }, async (request) => {
 
 // ===============================================================
 //  FUNCTION 10: Consume QR session (kiosk calls this)
-//  Kiosk scans token -> server validates -> returns uid
 // ===============================================================
 exports.consumeQrSession = onCall({ region: REGION }, async (request) => {
   await assertKiosk(request);
@@ -625,7 +705,6 @@ exports.consumeQrSession = onCall({ region: REGION }, async (request) => {
       throw new HttpsError("deadline-exceeded", "QR expired.");
     }
 
-    // ✅ mark as used (single-use)
     tx.update(ref, {
       status: "used",
       usedAt: FieldValue.serverTimestamp(),
@@ -651,7 +730,6 @@ exports.cleanupQrSessions = onSchedule(
     let totalExpired = 0;
     let totalUsedOld = 0;
 
-    // helper: delete in batches
     async function deleteByQuery(q, label) {
       while (true) {
         const snap = await q.limit(500).get();
@@ -678,13 +756,11 @@ exports.cleanupQrSessions = onSchedule(
       }
     }
 
-    // delete expired (any status) where expiresAt <= now
     await deleteByQuery(
       db.collection("qrSessions").where("expiresAt", "<=", now),
       "expired"
     );
 
-    // delete used sessions where usedAt <= cutoff
     await deleteByQuery(
       db
         .collection("qrSessions")
@@ -693,21 +769,25 @@ exports.cleanupQrSessions = onSchedule(
       "usedOld"
     );
 
-    console.log(`cleanupQrSessions: expired=${totalExpired}, usedOld=${totalUsedOld}`);
+    console.log(
+      `cleanupQrSessions: expired=${totalExpired}, usedOld=${totalUsedOld}`
+    );
   }
 );
 
+// ===============================================================
+//  EMAILS
+// ===============================================================
 exports.sendMonthlyImpactEmails = onSchedule(
   {
     region: REGION,
-    schedule: "0 9 1 * *", // 09:00 on day 1 every month
+    schedule: "0 9 1 * *",
     timeZone: "Asia/Kuala_Lumpur",
     secrets: [SENDGRID_API_KEY],
   },
   async () => {
     sgMail.setApiKey(SENDGRID_API_KEY.value());
 
-    // Query users who enabled email updates
     const snap = await db
       .collection("users")
       .where("emailUpdates", "==", true)
@@ -722,7 +802,6 @@ exports.sendMonthlyImpactEmails = onSchedule(
     let skipped = 0;
     let failed = 0;
 
-    // Send one-by-one (safe/simple). You can optimize later.
     for (const doc of snap.docs) {
       const u = doc.data() || {};
       const email = u.email;
@@ -733,7 +812,6 @@ exports.sendMonthlyImpactEmails = onSchedule(
 
       const name = u.name || email.split("@")[0] || "there";
 
-      // Use your existing aggregate fields
       const points = u.points ?? 0;
       const totalRecycled = u.totalRecycled ?? 0; // grams
       const depositCount = u.depositCount ?? 0;
@@ -779,7 +857,6 @@ Thank you for helping keep used cooking oil out of drains and the environment!
           text,
           html,
         });
-
         sent++;
       } catch (err) {
         failed++;
@@ -796,9 +873,6 @@ Thank you for helping keep used cooking oil out of drains and the environment!
 exports.sendTestEmail = onCall(
   { region: REGION, secrets: [SENDGRID_API_KEY] },
   async (request) => {
-    // Optional: allow admin only (recommended)
-    // await assertAdmin(request);
-
     const { to } = request.data || {};
     if (!to) throw new HttpsError("invalid-argument", "Missing to email.");
 
@@ -817,12 +891,8 @@ exports.sendTestEmail = onCall(
 );
 
 exports.sendMonthlyImpactEmailsManual = onCall(
-  {
-    region: REGION,
-    secrets: [SENDGRID_API_KEY],
-  },
+  { region: REGION, secrets: [SENDGRID_API_KEY] },
   async (request) => {
-    // 🔒 Admin protection (reuse your existing helper)
     await assertAdmin(request);
 
     sgMail.setApiKey(SENDGRID_API_KEY.value());
@@ -912,5 +982,124 @@ Thank you for helping keep used cooking oil out of drains and the environment!
       skipped,
       failed,
     };
+  }
+);
+
+// ===============================================================
+//  SHIFT HANDOVER CORE (shared by schedule + manual)
+// ===============================================================
+async function reassignPendingTasksCore(targetShiftType) {
+  console.log(`reassignPendingTasksCore: targetShiftType=${targetShiftType}`);
+
+  let total = 0;
+  const perZone = {};
+
+  for (const zone of ALLOWED_ZONES) {
+    const targetUid = await pickDutyAgentForZone(zone, targetShiftType);
+    if (!targetUid) {
+      console.log(`No duty agent for zone=${zone}, shiftType=${targetShiftType}`);
+      perZone[zone] = 0;
+      continue;
+    }
+
+    const targetData = await getUserByUid(targetUid);
+    const targetAgentId = targetData?.agentId || null;
+    const targetAgentName = targetData?.name || targetData?.email || "";
+
+    // ✅ pending + not started (your tasks are created with startedAt: null)
+    const tasksSnap = await db
+      .collection("collectionTasks")
+      .where("zone", "==", zone)
+      .where("status", "==", "pending")
+      .where("startedAt", "==", null)
+      .get();
+
+    if (tasksSnap.empty) {
+      perZone[zone] = 0;
+      continue;
+    }
+
+    const tasks = tasksSnap.docs
+      .map((d) => ({ ref: d.ref, data: d.data() }))
+      .filter((t) => (t.data.agentUid || null) !== targetUid);
+
+    if (tasks.length === 0) {
+      perZone[zone] = 0;
+      continue;
+    }
+
+    // optional: oldest-first
+    tasks.sort((a, b) => {
+      const as = a.data.createdAt?.seconds || 0;
+      const bs = b.data.createdAt?.seconds || 0;
+      return as - bs;
+    });
+
+    let batch = db.batch();
+    let ops = 0;
+
+    for (const t of tasks) {
+      batch.set(
+        t.ref,
+        {
+          agentUid: targetUid,
+          agentId: targetAgentId,
+          agentName: targetAgentName,
+          assignedAt: FieldValue.serverTimestamp(),
+          reassignedAt: FieldValue.serverTimestamp(),
+          reassignedFromUid: t.data.agentUid || null,
+          updatedAt: FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      ops++;
+      total++;
+      if (ops >= 450) {
+        await batch.commit();
+        batch = db.batch();
+        ops = 0;
+      }
+    }
+
+    if (ops > 0) await batch.commit();
+
+    perZone[zone] = tasks.length;
+    console.log(`reassignPendingTasksCore: zone=${zone} reassigned=${tasks.length}`);
+  }
+
+  return { total, perZone };
+}
+
+// ===============================================================
+//  SCHEDULED: shift change points
+// ===============================================================
+exports.reassignPendingTasksByShift = onSchedule(
+  {
+    region: REGION,
+    schedule: "1 18 * * 0,4",
+    timeZone: "Asia/Kuala_Lumpur",
+  },
+  async () => {
+    const targetShiftType = getShiftTypeForAssignment(Date.now());
+    await reassignPendingTasksCore(targetShiftType);
+  }
+);
+
+// ===============================================================
+//  MANUAL: callable (admin only) + optional shiftType override
+// ===============================================================
+exports.reassignPendingTasksByShiftManual = onCall(
+  { region: REGION },
+  async (request) => {
+    await assertAdmin(request);
+
+    const { shiftType } = request.data || {};
+    if (shiftType) assertShiftType(shiftType);
+
+    const targetShiftType = shiftType || getShiftTypeForAssignment(Date.now());
+    const result = await reassignPendingTasksCore(targetShiftType);
+
+    return { success: true, targetShiftType, reassigned: result.total, perZone: result.perZone };
   }
 );
