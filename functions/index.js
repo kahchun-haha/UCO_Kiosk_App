@@ -524,6 +524,19 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
       createdAt: now,
     });
 
+    // 4) ✅ Admin notification (3.2.3)
+    const notifRef = db.collection("adminNotifications").doc();
+    batch.set(notifRef, {
+      type: "TASK_COMPLETED",
+      taskId,
+      kioskId: kioskId || null,
+      kioskName: after.kioskName || null,
+      agentUid: agentUid || null,
+      agentId: agentId || null,
+      createdAt: now,
+      read: false,
+    });
+    
     await batch.commit();
     console.log(`Post-processing for task ${taskId} completed.`);
     return null;

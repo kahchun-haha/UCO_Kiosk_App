@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:uco_kiosk_app/models/collection_task.dart';
 import 'package:uco_kiosk_app/screens/agent_task_detail_screen.dart';
 
@@ -84,6 +86,159 @@ class _MyTasksList extends StatelessWidget {
 
   static const _primary = Color(0xFF88C999);
 
+  // -------------------------------
+  // ROUTE OPTIMIZATION HELPERS
+  // -------------------------------
+  double _distMeters(double aLat, double aLng, double bLat, double bLng) {
+    return Geolocator.distanceBetween(aLat, aLng, bLat, bLng);
+  }
+
+  List<Map<String, dynamic>> _nearestNeighborOrder({
+    required double startLat,
+    required double startLng,
+    required List<Map<String, dynamic>> stops,
+  }) {
+    final remaining = List<Map<String, dynamic>>.from(stops);
+    final ordered = <Map<String, dynamic>>[];
+
+    double curLat = startLat;
+    double curLng = startLng;
+
+    while (remaining.isNotEmpty) {
+      remaining.sort((a, b) {
+        final da = _distMeters(curLat, curLng, a['latitude'], a['longitude']);
+        final db = _distMeters(curLat, curLng, b['latitude'], b['longitude']);
+        return da.compareTo(db);
+      });
+
+      final next = remaining.removeAt(0);
+      ordered.add(next);
+      curLat = next['latitude'];
+      curLng = next['longitude'];
+    }
+
+    return ordered;
+  }
+
+  Future<Position> _getCurrentPosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      throw 'Location services are disabled.';
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied) {
+      throw 'Location permission denied.';
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      throw 'Location permission permanently denied.';
+    }
+
+    return Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium);
+  }
+
+  Future<void> _launchMultiStopRoute({
+    required double originLat,
+    required double originLng,
+    required List<Map<String, dynamic>> orderedStops,
+  }) async {
+    if (orderedStops.isEmpty) return;
+
+    final dest = orderedStops.last;
+
+    final waypoints = orderedStops.length > 1
+        ? orderedStops
+            .sublist(0, orderedStops.length - 1)
+            .map((k) => "${k['latitude']},${k['longitude']}")
+            .join('|')
+        : null;
+
+    final uri = Uri.parse(
+      "https://www.google.com/maps/dir/?api=1"
+      "&origin=$originLat,$originLng"
+      "&destination=${dest['latitude']},${dest['longitude']}"
+      "${waypoints != null ? "&waypoints=$waypoints" : ""}"
+      "&travelmode=driving",
+    );
+
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) throw "Could not open Google Maps route";
+  }
+
+  Future<List<Map<String, dynamic>>> _loadKioskStops(List<CollectionTask> tasks) async {
+    final stops = <Map<String, dynamic>>[];
+
+    for (final t in tasks) {
+      if (t.kioskId.isEmpty) continue;
+
+      final kioskDoc =
+          await FirebaseFirestore.instance.collection('kiosks').doc(t.kioskId).get();
+      if (!kioskDoc.exists) continue;
+
+      final k = kioskDoc.data() as Map<String, dynamic>;
+      final lat = k['latitude'];
+      final lng = k['longitude'];
+
+      if (lat is! num || lng is! num) continue;
+
+      stops.add({
+        'kioskId': kioskDoc.id,
+        'name': (k['name'] ?? t.kioskName).toString(),
+        'latitude': lat.toDouble(),
+        'longitude': lng.toDouble(),
+      });
+    }
+
+    return stops;
+  }
+
+  Future<void> _startOptimizedRoute(BuildContext context, List<CollectionTask> active) async {
+    try {
+      // 1) origin = current GPS
+      final pos = await _getCurrentPosition();
+
+      // 2) load stops from kiosks collection
+      final stops = await _loadKioskStops(active);
+
+      if (stops.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No kiosk coordinates found for these tasks.')),
+          );
+        }
+        return;
+      }
+
+      // 3) order route (nearest-neighbor)
+      final ordered = _nearestNeighborOrder(
+        startLat: pos.latitude,
+        startLng: pos.longitude,
+        stops: stops,
+      );
+
+      // 4) cap stops for Google Maps waypoint stability (safe cap)
+      final capped = ordered.length > 10 ? ordered.sublist(0, 10) : ordered;
+
+      // 5) open google maps
+      await _launchMultiStopRoute(
+        originLat: pos.latitude,
+        originLng: pos.longitude,
+        orderedStops: capped,
+      );
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Route failed: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -97,7 +252,9 @@ class _MyTasksList extends StatelessWidget {
         final docs = snap.data?.docs ?? [];
         final tasks = docs.map((d) => CollectionTask.fromDoc(d)).toList();
 
-        final active = tasks.where((t) => t.status == 'pending' || t.status == 'in_progress').toList();
+        final active =
+            tasks.where((t) => t.status == 'pending' || t.status == 'in_progress').toList();
+
         active.sort((a, b) {
           int rank(String s) => s == 'in_progress' ? 0 : 1;
           final r = rank(a.status).compareTo(rank(b.status));
@@ -110,10 +267,34 @@ class _MyTasksList extends StatelessWidget {
         }
 
         return Column(
-          children: active.map((t) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _TaskCard(task: t),
-          )).toList(),
+          children: [
+            // ✅ 3.2.1 Start Optimized Route button
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () => _startOptimizedRoute(context, active),
+                icon: const Icon(Icons.route_rounded),
+                label: const Text(
+                  "Start Optimized Route",
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // Task cards
+            ...active.map((t) => Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: _TaskCard(task: t),
+                )),
+          ],
         );
       },
     );
