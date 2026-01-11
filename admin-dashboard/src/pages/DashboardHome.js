@@ -298,11 +298,16 @@ export default function DashboardHome() {
               return (
                 <div
                   key={n.id}
-                  className={`relative p-4 rounded-xl flex items-start justify-between border ${
+                  className={`relative p-4 rounded-xl overflow-hidden flex items-start justify-between border ${
                     isRead ? 'bg-gray-50 border-gray-200' : 'bg-green-100/70 border-green-300'
                   }`}
                 >
-                  <div className={`absolute left-0 top-0 h-full w-1 rounded-l-xl ${isRead ? 'bg-gray-300' : 'bg-green-500'}`} />
+                  {/* ✅ Flush left strip (aligned with border) */}
+                  <div
+                    className={`absolute -left-px -top-px -bottom-px w-1.5 ${
+                      isRead ? 'bg-gray-300' : 'bg-green-500'
+                    }`}
+                  />
 
                   <div className="pr-4">
                     <p className={`font-semibold ${isRead ? 'text-gray-800' : 'text-green-700'}`}>
