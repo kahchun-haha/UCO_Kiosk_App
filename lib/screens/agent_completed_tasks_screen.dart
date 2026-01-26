@@ -73,7 +73,7 @@ class _AgentCompletedTasksScreenState extends State<AgentCompletedTasksScreen> {
         border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Text(
-        '$count',
+        'Total: $count',
         style: const TextStyle(
           fontWeight: FontWeight.w900,
           fontSize: 12,

@@ -40,8 +40,9 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
     return '${kg.toStringAsFixed(3)} kg (${grams.toStringAsFixed(2)} g)';
   }
 
+  // ✅ Your rule: ROUND UP (ceiling)
   int _computePointsFromWeight(double grams) {
-    return (grams / 10).round();
+    return (grams / 10).ceil();
   }
 
   @override
@@ -108,8 +109,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                       child: Text('All'),
                     ),
                   ],
-                  onChanged:
-                      (v) => setState(() => _filter = v ?? HistoryFilter.all),
+                  onChanged: (v) => setState(() => _filter = v ?? HistoryFilter.all),
                 ),
                 const Spacer(),
                 IconButton(
@@ -162,8 +162,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                       return date.year == now.year && date.month == now.month;
                     } else if (_filter == HistoryFilter.lastMonth) {
                       final lastMonth = DateTime(now.year, now.month - 1);
-                      return date.year == lastMonth.year &&
-                          date.month == lastMonth.month;
+                      return date.year == lastMonth.year && date.month == lastMonth.month;
                     }
                     return true;
                   }).toList();
@@ -195,18 +194,26 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                   final items = filteredDocs.map((doc) {
                     final d = doc.data() as Map<String, dynamic>;
 
-                    final weight = (d['weight'] is int)
-                        ? (d['weight'] as int).toDouble()
-                        : (d['weight'] ?? 0.0);
+                    // ✅ safer weight parsing
+                    final rawW = d['weight'];
+                    final weight = (rawW is int)
+                        ? rawW.toDouble()
+                        : (rawW is double)
+                            ? rawW
+                            : double.tryParse(rawW?.toString() ?? '0') ?? 0.0;
 
+                    // ✅ points: prefer stored deposit.points, else CEILING fallback
+                    final rawP = d['points'];
                     int points;
-                    if (d.containsKey('points')) {
-                      final p = d['points'];
-                      points = (p is int)
-                          ? p
-                          : (p is double
-                              ? p.round()
-                              : int.tryParse(p.toString()) ?? 0);
+                    if (rawP != null) {
+                      if (rawP is int) {
+                        points = rawP;
+                      } else if (rawP is double) {
+                        // if somehow saved as double, keep consistent with "round up"
+                        points = rawP.ceil();
+                      } else {
+                        points = int.tryParse(rawP.toString()) ?? 0;
+                      }
                     } else {
                       points = _computePointsFromWeight(weight);
                     }
@@ -217,7 +224,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                     total += weight;
                     totalPoints += points;
 
-                    // NEW: Read kioskName, fallback to kioskId, then fallback text
+                    // Read kioskName, fallback to kioskId, then fallback text
                     final kioskNameRaw = d['kioskName'];
                     final kioskIdRaw = d['kioskId'];
 
@@ -295,8 +302,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                       Expanded(
                         child: ListView.separated(
                           itemCount: items.length,
-                          separatorBuilder: (_, __) =>
-                              const SizedBox(height: 12),
+                          separatorBuilder: (_, __) => const SizedBox(height: 12),
                           itemBuilder: (context, i) {
                             final it = items[i];
                             return InkWell(
@@ -325,7 +331,6 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                 ),
                                 child: Row(
                                   children: [
-                                    // NEW: nicer icon for recycling
                                     Container(
                                       padding: const EdgeInsets.all(8),
                                       decoration: BoxDecoration(
@@ -340,20 +345,16 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                     const SizedBox(width: 12),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
+                                        crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
                                           Text(
-                                            _formatKgAndG(
-                                              it['weight'] as double,
-                                            ),
+                                            _formatKgAndG(it['weight'] as double),
                                             style: const TextStyle(
                                               fontWeight: FontWeight.w700,
                                               fontSize: 16,
                                             ),
                                           ),
                                           const SizedBox(height: 4),
-                                          // NEW: kiosk name only, no "Kiosk:" prefix
                                           Text(
                                             it['kioskName'] as String,
                                             style: const TextStyle(
@@ -363,9 +364,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            _formatTimestamp(
-                                              it['timestamp'] as Timestamp?,
-                                            ),
+                                            _formatTimestamp(it['timestamp'] as Timestamp?),
                                             style: const TextStyle(
                                               color: Color(0xFF9CA3AF),
                                               fontSize: 12,
@@ -375,8 +374,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                       ),
                                     ),
                                     Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.end,
+                                      crossAxisAlignment: CrossAxisAlignment.end,
                                       children: [
                                         Container(
                                           padding: const EdgeInsets.symmetric(
@@ -385,8 +383,7 @@ class _RecyclingHistoryScreenState extends State<RecyclingHistoryScreen> {
                                           ),
                                           decoration: BoxDecoration(
                                             color: const Color(0xFFF1F5F9),
-                                            borderRadius:
-                                                BorderRadius.circular(12),
+                                            borderRadius: BorderRadius.circular(12),
                                           ),
                                           child: Row(
                                             children: [

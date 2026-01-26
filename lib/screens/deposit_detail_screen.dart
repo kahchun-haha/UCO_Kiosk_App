@@ -22,6 +22,27 @@ class DepositDetailScreen extends StatelessWidget {
     return DateFormat('yyyyMMdd_HHmmss').format(ts.toDate().toLocal());
   }
 
+  // ✅ Your rule: ROUND UP (ceiling)
+  int _computePointsFromWeight(double grams) => (grams / 10).ceil();
+
+  // ✅ Safe parse for weight (supports int/double/string)
+  double _parseWeight(dynamic raw) {
+    if (raw is int) return raw.toDouble();
+    if (raw is double) return raw;
+    return double.tryParse(raw?.toString() ?? '0') ?? 0.0;
+  }
+
+  // ✅ Prefer stored deposit.points, else CEILING fallback
+  int _parsePoints(Map<String, dynamic> data, double weight) {
+    final rawP = data['points'];
+    if (rawP != null) {
+      if (rawP is int) return rawP;
+      if (rawP is double) return rawP.ceil(); // keep consistent with "round up"
+      return int.tryParse(rawP.toString()) ?? 0;
+    }
+    return _computePointsFromWeight(weight);
+  }
+
   Future<void> _downloadReceiptPdf({
     required BuildContext context,
     required String kioskName,
@@ -49,11 +70,13 @@ class DepositDetailScreen extends StatelessWidget {
                 child: pw.Row(
                   mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                   children: [
-                    pw.Text(label,
-                        style: pw.TextStyle(
-                          fontSize: 11,
-                          color: PdfColors.grey700,
-                        )),
+                    pw.Text(
+                      label,
+                      style: pw.TextStyle(
+                        fontSize: 11,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
                     pw.SizedBox(width: 16),
                     pw.Expanded(
                       child: pw.Text(
@@ -116,7 +139,6 @@ class DepositDetailScreen extends StatelessWidget {
                       ),
                       pw.SizedBox(height: 12),
                       pw.Divider(color: PdfColors.grey300),
-
                       lineItem('Kiosk', kioskName.isNotEmpty ? kioskName : kioskId),
                       lineItem('Points Earned', '+$points'),
                       lineItem('Timestamp', dtText),
@@ -202,13 +224,12 @@ class DepositDetailScreen extends StatelessWidget {
             }
 
             final data = snap.data!.data()! as Map<String, dynamic>;
-            final kioskId = data['kioskId'] ?? 'Unknown';
+            final kioskId = (data['kioskId'] ?? 'Unknown').toString();
 
-            final weight =
-                (data['weight'] is int) ? (data['weight'] as int).toDouble() : (data['weight'] ?? 0.0);
-            final points = data['points'] ?? (weight / 10).round();
+            final weight = _parseWeight(data['weight']); // ✅ safe
+            final points = _parsePoints(data, weight); // ✅ prefer stored, else ceil
             final ts = data['timestamp'] as Timestamp?;
-            final userId = data['userId'] ?? '';
+            final userId = (data['userId'] ?? '').toString();
 
             return FutureBuilder<DocumentSnapshot>(
               future: FirebaseFirestore.instance.collection('kiosks').doc(kioskId).get(),
@@ -281,7 +302,8 @@ class DepositDetailScreen extends StatelessWidget {
                           const SizedBox(height: 6),
                           Text(fmt(ts), style: const TextStyle(color: Color(0xFF6B7280))),
                           const SizedBox(height: 12),
-                          const Text('Collected by (userId)', style: TextStyle(color: Color(0xFF9CA3AF))),
+                          const Text('Collected by (userId)',
+                              style: TextStyle(color: Color(0xFF9CA3AF))),
                           const SizedBox(height: 6),
                           Text(userId, style: const TextStyle(color: Color(0xFF6B7280))),
                         ],
@@ -299,10 +321,10 @@ class DepositDetailScreen extends StatelessWidget {
                             context: context,
                             kioskName: kioskName,
                             kioskId: kioskId,
-                            weightGram: weight.toDouble(),
-                            points: points is int ? points : int.tryParse(points.toString()) ?? 0,
+                            weightGram: weight,
+                            points: points, // ✅ already int
                             ts: ts,
-                            userId: userId.toString(),
+                            userId: userId,
                           );
                         },
                         style: ElevatedButton.styleFrom(

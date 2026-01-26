@@ -53,6 +53,7 @@ async function getCallerRole(request) {
   return meSnap.data()?.role ?? null;
 }
 
+// Role-Based Access Control
 async function assertAdmin(request) {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Login required.");
@@ -63,7 +64,7 @@ async function assertAdmin(request) {
   }
 }
 
-// ✅ kiosk-only callable protection (or allow admin/superadmin for testing)
+//kiosk-only callable protection (or allow admin/superadmin for testing)
 async function assertKiosk(request) {
   if (!request.auth) {
     throw new HttpsError("unauthenticated", "Login required.");
@@ -74,6 +75,7 @@ async function assertKiosk(request) {
   }
 }
 
+//Input validation
 function assertZone(zone) {
   if (!zone || !ALLOWED_ZONES.includes(zone)) {
     throw new HttpsError(
@@ -186,10 +188,6 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
 
     if (!before || !after) return null;
 
-    console.log(
-      `KIOSK UPDATE → ${kioskId} | Before: ${before.fillLevel}% | After: ${after.fillLevel}%`
-    );
-
     // -------------------------------
     // Detect kiosk emptied event
     // -------------------------------
@@ -197,7 +195,6 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
     const nowLow = (after.fillLevel ?? 0) <= 10;
 
     if (wasFull && nowLow) {
-      console.log(`Kiosk ${kioskId} was emptied → Updating lastEmptied.`);
       await db.collection("kiosks").doc(kioskId).update({
         lastEmptied: FieldValue.serverTimestamp(),
       });
@@ -219,16 +216,11 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       .where("status", "in", ["pending", "in_progress"])
       .get();
 
-    if (!existing.empty) {
-      console.log(`Kiosk ${kioskId} already has an active task.`);
-      return null;
-    }
-
-    console.log(`Creating NEW collection task for kiosk ${kioskId}.`);
+    if (!existing.empty) return null;
 
     const zone = after.zone || null;
 
-    // ✅ Assign by Zone + Shift (NO round robin)
+    // Assign by Zone + Shift
     let agentUid = null;
     let agentId = null;
 
@@ -239,21 +231,27 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       if (agentUid) {
         const agentData = await getUserByUid(agentUid);
         agentId = agentData?.agentId || null;
-      } else {
-        console.log(`No duty agent found for zone=${zone} shiftType=${shiftType}. Task will be unassigned.`);
+        agentName = agentData?.name || null;
       }
     }
 
-    return db.collection("collectionTasks").add({
+    // ✅ Use batch so task + kiosk status + notification are consistent
+    const batch = db.batch();
+    const now = FieldValue.serverTimestamp();
+
+    // 1) Create task
+    const taskRef = db.collection("collectionTasks").doc();
+    batch.set(taskRef, {
       kioskId,
       kioskName: after.name || after.location || "Unnamed Kiosk",
       zone,
       status: "pending",
-      createdAt: FieldValue.serverTimestamp(),
+      createdAt: now,
 
       agentUid: agentUid || null,
       agentId: agentId || null,
-      assignedAt: agentUid ? FieldValue.serverTimestamp() : null,
+      agentName: agentName || null,
+      assignedAt: agentUid ? now : null,
 
       startedAt: null,
       completedAt: null,
@@ -263,14 +261,50 @@ exports.autoCreateCollectionTask = onDocumentUpdated(
       proofPhotoUrl: null,
       proofUploadedAt: null,
 
-      // Optional audit for reassign
       reassignedAt: null,
       reassignedFromUid: null,
 
       postProcessedAt: null,
     });
+
+    // 2) Make kiosk go OFFLINE after task creation
+    // (so admin console reflects it's not accepting deposits while waiting collection)
+    const kioskRef = db.collection("kiosks").doc(kioskId);
+    batch.set(
+      kioskRef,
+      {
+        status: "offline",
+        statusUpdatedAt: now,
+        offlineReason: "FULL_WAITING_COLLECTION",
+      },
+      { merge: true }
+    );
+
+    // 3) ✅ Admin notification: kiosk full + task created/assigned
+    const notifRef = db.collection("adminNotifications").doc();
+    batch.set(notifRef, {
+      type: "TASK_CREATED_FULL",
+      kioskId,
+      kioskName: after.name || after.location || null,
+      zone: zone || null,
+
+      taskId: taskRef.id,
+
+      assigned: !!agentUid,
+      agentUid: agentUid || null,
+      agentId: agentId || null,
+
+      fillLevel: after.fillLevel ?? null,
+      createdAt: now,
+      read: false,
+    });
+
+    await batch.commit();
+
+    return null;
   }
 );
+
 
 // ===============================================================
 //  FUNCTION 2: Award points + user recycling history
@@ -289,10 +323,16 @@ exports.awardPointsOnDeposit = onDocumentCreated(
 
     if (!userId || !weightInGrams) return null;
 
-    const pointsToAward = Math.floor(weightInGrams / 10);
+    const pointsToAward = Math.ceil(weightInGrams / 10);
+
+    const depositRef = event.data.ref;
+    await depositRef.set(
+      { points: pointsToAward },
+      { merge: true }
+    );
+
     const userRef = db.collection("users").doc(userId);
 
-    // Update aggregates
     try {
       await userRef.set(
         {
@@ -308,7 +348,6 @@ exports.awardPointsOnDeposit = onDocumentCreated(
       console.error("Error updating user aggregates:", err);
     }
 
-    // Add history entry
     try {
       await db
         .collection("users")
@@ -318,6 +357,7 @@ exports.awardPointsOnDeposit = onDocumentCreated(
           kioskId: deposit.kioskId || null,
           kioskName: deposit.kioskName || "Unknown",
           weight: weightInGrams,
+          points: pointsToAward,
           timestamp: FieldValue.serverTimestamp(),
         });
 
@@ -329,6 +369,7 @@ exports.awardPointsOnDeposit = onDocumentCreated(
     return null;
   }
 );
+
 
 // ===============================================================
 //  FUNCTION 3: Securely Create Admin (admin-only)
@@ -365,7 +406,7 @@ exports.createAdmin = onCall({ region: REGION }, async (request) => {
 
 // ===============================================================
 //  FUNCTION 4: Securely Create Agent (admin-only) + AUTO agentId
-//  ✅ NEW: requires shiftType = "weekday" | "weekend"
+//  requires shiftType = "weekday" | "weekend"
 // ===============================================================
 exports.createAgent = onCall({ region: REGION }, async (request) => {
   await assertAdmin(request);
@@ -394,7 +435,7 @@ exports.createAgent = onCall({ region: REGION }, async (request) => {
       agentId,
       phone: phone || "",
       zone,
-      shiftType, // ✅ IMPORTANT
+      shiftType,
       createdAt: FieldValue.serverTimestamp(),
       active: true,
       tasksCompleted: 0,
@@ -456,6 +497,7 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
     if (!before || !after) return null;
     if (before.status === after.status) return null;
     if (after.status !== "completed") return null;
+    //Post-processing guard
     if (after.postProcessedAt) {
       console.log(`Task ${taskId} already post-processed. Skipping.`);
       return null;
@@ -494,6 +536,9 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
           lastUpdated: now,
           assignedAgentUid: agentUid || null,
           assignedAgentId: agentId || null,
+          status: "online",
+          statusUpdatedAt: now,
+          offlineReason: "",
         },
         { merge: true }
       );
@@ -524,7 +569,7 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
       createdAt: now,
     });
 
-    // 4) ✅ Admin notification (3.2.3)
+    // 4) Admin notification
     const notifRef = db.collection("adminNotifications").doc();
     batch.set(notifRef, {
       type: "TASK_COMPLETED",
@@ -537,6 +582,7 @@ exports.onCollectionTaskStatusChange = onDocumentUpdated(
       read: false,
     });
     
+    //Atomic batch updates
     await batch.commit();
     console.log(`Post-processing for task ${taskId} completed.`);
     return null;
@@ -560,7 +606,7 @@ exports.onDepositDeleted = onDocumentDeleted(
 
     if (!userId || !weightInGrams) return null;
 
-    const pointsToRemove = Math.floor(weightInGrams / 10);
+    const pointsToRemove = Math.ceil(weightInGrams / 10);
 
     await db
       .collection("users")
@@ -593,7 +639,7 @@ exports.rebuildUserAggregates = onCall({ region: REGION }, async (request) => {
     const weight = d.weight || 0;
     if (!userId || !weight) return;
 
-    const points = Math.floor(weight / 10);
+    const points = Math.ceil(weight / 10);
 
     const cur = perUser.get(userId) || { grams: 0, count: 0, points: 0 };
     cur.grams += weight;
@@ -688,7 +734,7 @@ exports.createQrSession = onCall({ region: REGION }, async (request) => {
 });
 
 // ===============================================================
-//  FUNCTION 10: Consume QR session (kiosk calls this)
+//  FUNCTION 10: Consume QR session
 // ===============================================================
 exports.consumeQrSession = onCall({ region: REGION }, async (request) => {
   await assertKiosk(request);
@@ -1041,7 +1087,6 @@ async function reassignPendingTasksCore(targetShiftType) {
       continue;
     }
 
-    // optional: oldest-first
     tasks.sort((a, b) => {
       const as = a.data.createdAt?.seconds || 0;
       const bs = b.data.createdAt?.seconds || 0;

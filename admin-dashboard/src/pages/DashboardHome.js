@@ -243,7 +243,7 @@ export default function DashboardHome() {
           color="bg-primary"
         />
         <StatCard icon="👥" label="Registered Users" value={stats.users} color="bg-blue-500" />
-        <StatCard icon="📍" label="Active Kiosks" value={stats.kiosks} color="bg-orange-500" />
+        <StatCard icon="📍" label="Registered Kiosks" value={stats.kiosks} color="bg-orange-500" />
         <StatCard icon="🚛" label="Pending Tasks" value={stats.tasks} color="bg-red-500" />
       </div>
 
@@ -295,28 +295,65 @@ export default function DashboardHome() {
             {adminNotifs.map((n) => {
               const isRead = n.read === true;
 
+              // ✅ identify type
+              const type = (n.type || 'TASK_COMPLETED').toUpperCase();
+
+              // ✅ derive UI text
+              const kioskName = n.kioskName || n.kioskId || 'Unknown Kiosk';
+              const agentText = n.agentId || n.agentUid || '—';
+              const taskShort = n.taskId ? String(n.taskId).slice(0, 10) + '…' : '—';
+
+              const isTaskCreated = type === 'TASK_CREATED_FULL';
+              const isTaskCompleted = type === 'TASK_COMPLETED';
+
+              const title = isTaskCreated
+                ? `⚠️ Kiosk Full — Task Created${n.assigned ? ' (Assigned)' : ' (Unassigned)'}`
+                : `✅ Task Completed`;
+
+              const subtitle = isTaskCreated
+                ? `Agent: ${agentText} • Task: ${taskShort}${n.zone ? ` • ${n.zone}` : ''}`
+                : `Agent: ${agentText} • Task ID: ${taskShort}`;
+
+              // ✅ color scheme (optional)
+              const bgClass = isRead
+                ? 'bg-gray-50 border-gray-200'
+                : isTaskCreated
+                ? 'bg-amber-100/70 border-amber-300'
+                : 'bg-green-100/70 border-green-300';
+
+              const stripClass = isRead
+                ? 'bg-gray-300'
+                : isTaskCreated
+                ? 'bg-amber-500'
+                : 'bg-green-500';
+
+              const titleTextClass = isRead
+                ? 'text-gray-800'
+                : isTaskCreated
+                ? 'text-amber-800'
+                : 'text-green-700';
+
               return (
                 <div
                   key={n.id}
-                  className={`relative p-4 rounded-xl overflow-hidden flex items-start justify-between border ${
-                    isRead ? 'bg-gray-50 border-gray-200' : 'bg-green-100/70 border-green-300'
-                  }`}
+                  className={`relative p-4 rounded-xl overflow-hidden flex items-start justify-between border ${bgClass}`}
                 >
-                  {/* ✅ Flush left strip (aligned with border) */}
-                  <div
-                    className={`absolute -left-px -top-px -bottom-px w-1.5 ${
-                      isRead ? 'bg-gray-300' : 'bg-green-500'
-                    }`}
-                  />
+                  {/* left strip */}
+                  <div className={`absolute -left-px -top-px -bottom-px w-1.5 ${stripClass}`} />
 
                   <div className="pr-4">
-                    <p className={`font-semibold ${isRead ? 'text-gray-800' : 'text-green-700'}`}>
-                      ✅ Task Completed — {n.kioskName || n.kioskId || 'Unknown Kiosk'}
+                    <p className={`font-semibold ${titleTextClass}`}>
+                      {title} — {kioskName}
                     </p>
-                    <p className="text-xs text-text-sub mt-1">
-                      Agent: {n.agentId || n.agentUid || '—'} • Task ID:{' '}
-                      {n.taskId ? String(n.taskId).slice(0, 10) + '…' : '—'}
-                    </p>
+
+                    <p className="text-xs text-text-sub mt-1">{subtitle}</p>
+
+                    {/* show fillLevel if this notif is kiosk full */}
+                    {isTaskCreated && (n.fillLevel !== undefined && n.fillLevel !== null) ? (
+                      <p className="text-xs text-text-sub mt-1">
+                        Fill Level: <span className="font-semibold">{n.fillLevel}%</span>
+                      </p>
+                    ) : null}
                   </div>
 
                   <button
@@ -339,6 +376,7 @@ export default function DashboardHome() {
                 </div>
               );
             })}
+
           </div>
         )}
       </div>

@@ -28,7 +28,8 @@ ChartJS.register(
 );
 
 export default function AnalyticsPage() {
-  const [range, setRange] = useState('30d'); // 7d, 30d, 90d
+  // ✅ default = all time
+  const [range, setRange] = useState('all'); // 7d, 30d, all
   const [loading, setLoading] = useState(true);
 
   // Deposits analytics
@@ -39,41 +40,57 @@ export default function AnalyticsPage() {
     totalKg: 0,
     deposits: 0,
     avgKgPerDeposit: 0,
-    kiosks: 0,
+    kiosks: 0, // active kiosks in selected range (based on deposits)
   });
 
-  // Tasks analytics (FR-4.5)
+  // Online kiosks (current)
+  const [onlineKiosks, setOnlineKiosks] = useState(0);
+
+  // Tasks analytics
   const [taskSummary, setTaskSummary] = useState({
     totalTasks: 0,
     completedTasks: 0,
     avgHours: 0,
   });
-  const [tasksByAgent, setTasksByAgent] = useState([]); // [{ name, count }]
+  const [tasksByAgent, setTasksByAgent] = useState([]);
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
-        const now = new Date();
-        const start = new Date();
-        if (range === '7d') start.setDate(now.getDate() - 7);
-        else if (range === '30d') start.setDate(now.getDate() - 30);
-        else if (range === '90d') start.setDate(now.getDate() - 90);
+        // =========================
+        // 0) Online Kiosks (current)
+        // =========================
+        const kiosksOnlineQ = query(collection(db, 'kiosks'), where('status', '==', 'online'));
+        const kiosksOnlineSnap = await getDocs(kiosksOnlineQ);
+        setOnlineKiosks(kiosksOnlineSnap.size);
 
         // =========================
-        // 1) Deposits (weight)
+        // Build time filter
         // =========================
-        const depositsQ = query(
-          collection(db, 'deposits'),
-          where('timestamp', '>=', start),
-          orderBy('timestamp', 'asc')
-        );
+        let start = null;
+        if (range === '7d' || range === '30d') {
+          const now = new Date();
+          start = new Date();
+          if (range === '7d') start.setDate(now.getDate() - 7);
+          if (range === '30d') start.setDate(now.getDate() - 30);
+        }
+
+        // =========================
+        // 1) Deposits
+        // =========================
+        const depositsBase = collection(db, 'deposits');
+
+        const depositsQ =
+          range === 'all'
+            ? query(depositsBase, orderBy('timestamp', 'asc'))
+            : query(depositsBase, where('timestamp', '>=', start), orderBy('timestamp', 'asc'));
 
         const depSnap = await getDocs(depositsQ);
-        const deps = [];
 
-        depSnap.forEach((doc) => {
-          const data = doc.data();
+        const deps = [];
+        depSnap.forEach((docx) => {
+          const data = docx.data();
           if (!data.timestamp || typeof data.timestamp.toDate !== 'function') return;
 
           const ts = data.timestamp.toDate();
@@ -87,7 +104,7 @@ export default function AnalyticsPage() {
           });
         });
 
-        // summary
+        // Summary
         const totalKg = deps.reduce((sum, d) => sum + d.weightKg, 0);
         const depositsCount = deps.length;
         const avgKgPerDeposit = depositsCount ? totalKg / depositsCount : 0;
@@ -100,7 +117,9 @@ export default function AnalyticsPage() {
           kiosks: kioskSet.size,
         });
 
-        // daily chart (kg)
+        // DAILY chart:
+        // - for 7d/30d => daily is meaningful
+        // - for all-time => it can be too many points; we’ll still show daily (your choice)
         const dailyMap = {};
         deps.forEach((d) => {
           const key = d.ts.toISOString().slice(0, 10);
@@ -115,7 +134,7 @@ export default function AnalyticsPage() {
         );
         setDailyKg(sortedDays.map((k) => Number((dailyMap[k] || 0).toFixed(3))));
 
-        // kiosk chart (kg)
+        // Kiosk chart (kg)
         const kioskMap = {};
         deps.forEach((d) => {
           kioskMap[d.kiosk] = (kioskMap[d.kiosk] || 0) + d.weightKg;
@@ -130,19 +149,20 @@ export default function AnalyticsPage() {
         );
 
         // =========================
-        // 2) Collection Tasks (FR-4.5)
+        // 2) Collection Tasks
         // =========================
-        const tasksQ = query(
-          collection(db, 'collectionTasks'),
-          where('createdAt', '>=', start),
-          orderBy('createdAt', 'asc')
-        );
+        const tasksBase = collection(db, 'collectionTasks');
+
+        const tasksQ =
+          range === 'all'
+            ? query(tasksBase, orderBy('createdAt', 'asc'))
+            : query(tasksBase, where('createdAt', '>=', start), orderBy('createdAt', 'asc'));
 
         const taskSnap = await getDocs(tasksQ);
-        const tasks = [];
 
-        taskSnap.forEach((doc) => {
-          const t = doc.data();
+        const tasks = [];
+        taskSnap.forEach((docx) => {
+          const t = docx.data();
 
           const createdAt =
             t.createdAt && typeof t.createdAt.toDate === 'function' ? t.createdAt.toDate() : null;
@@ -153,7 +173,7 @@ export default function AnalyticsPage() {
               : null;
 
           tasks.push({
-            id: doc.id,
+            id: docx.id,
             agentId: t.agentId || null,
             status: t.status || 'unknown',
             createdAt,
@@ -201,9 +221,7 @@ export default function AnalyticsPage() {
     fetchData();
   }, [range]);
 
-  // =========================
-  // Export report CSV (weight)
-  // =========================
+  // Export CSV
   const exportAnalyticsCSV = () => {
     const header = ['Metric', 'Value'];
     const escape = (v) => `"${String(v).replace(/"/g, '""')}"`;
@@ -213,7 +231,8 @@ export default function AnalyticsPage() {
       ['Total UCO (kg)', summary.totalKg],
       ['Deposits', summary.deposits],
       ['Avg per Deposit (kg)', summary.avgKgPerDeposit],
-      ['Active Kiosks', summary.kiosks],
+      ['Active Kiosks (Range)', summary.kiosks],
+      ['Online Kiosks (Current)', onlineKiosks],
       ['Total Tasks', taskSummary.totalTasks],
       ['Completed Tasks', taskSummary.completedTasks],
       ['Avg Collection Time (hrs)', taskSummary.avgHours],
@@ -249,9 +268,9 @@ export default function AnalyticsPage() {
             onChange={(e) => setRange(e.target.value)}
             className="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white shadow-sm"
           >
+            <option value="all">All time</option>
             <option value="7d">Last 7 days</option>
             <option value="30d">Last 30 days</option>
-            <option value="90d">Last 90 days</option>
           </select>
 
           <button
@@ -267,8 +286,11 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-6 gap-4 mb-6">
         <SummaryCard label="Total Weight" value={`${Number(summary.totalKg || 0).toFixed(2)} kg`} />
         <SummaryCard label="Deposits" value={summary.deposits} />
-        <SummaryCard label="Avg per Deposit" value={`${Number(summary.avgKgPerDeposit || 0).toFixed(2)} kg`} />
-        <SummaryCard label="Active Kiosks" value={summary.kiosks} />
+        <SummaryCard
+          label="Avg per Deposit"
+          value={`${Number(summary.avgKgPerDeposit || 0).toFixed(2)} kg`}
+        />
+        <SummaryCard label="Online Kiosks" value={onlineKiosks} />
         <SummaryCard label="Total Tasks" value={taskSummary.totalTasks} />
         <SummaryCard label="Avg Collection Time" value={`${taskSummary.avgHours} hrs`} />
       </div>
@@ -279,7 +301,10 @@ export default function AnalyticsPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Daily weight */}
           <div className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
-            <h3 className="text-lg font-bold text-text-main mb-4">Daily Weight</h3>
+            <h3 className="text-lg font-bold text-text-main mb-4">
+              Daily Weight {range === 'all' ? '(All time)' : range === '7d' ? '(Last 7 days)' : '(Last 30 days)'}
+            </h3>
+
             {dailyLabels.length === 0 ? (
               <p className="text-sm text-text-sub">No data for selected range.</p>
             ) : (

@@ -19,9 +19,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final _authService = AuthService();
 
-  // We don't need manual state variables like _userPoints anymore 
-  // because the StreamBuilder will handle the data live.
-
   Future<void> _signOut() async {
     final shouldSignOut = await showDialog<bool>(
       context: context,
